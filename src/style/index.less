@@ -124,8 +124,14 @@ html[data-theme='dark'] #app {
 html,
 body,
 #app {
+  height: 100%;
   background: var(--bg-color);
   color: var(--text-color);
+}
+
+/* 列表滚动容器必须由确定高度链撑起，否则 .clip-item-scroll 不产生溢出，滚动会退化到 document。 */
+#app > .app {
+  height: 100%;
 }
 
 .el-overlay {

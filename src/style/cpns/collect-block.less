@@ -1,6 +1,8 @@
 @import '../style';
 
 .collect-block-header {
+  /* .main 为纵向 flex 容器，标题不参与收缩，避免被列表挤扁 */
+  flex: none;
   display: flex;
   align-items: center;
   font-size: 13px;

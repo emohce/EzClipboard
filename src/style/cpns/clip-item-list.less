@@ -3,7 +3,9 @@
   user-select: none;
 
   .clip-item-scroll {
-    height: 100%;
+    /* 高度由 .clip-item-list 的纵向 flex 分配；写死 height:100% 会把空态占位挤出可视区 */
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: auto;
   }
 

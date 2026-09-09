@@ -118,18 +118,19 @@ export function ensureDevDbStub() {
   if (!window.remove) {
     window.remove = () => false
   }
+  // 与 initPlugin 保持同一滚动容器口径：真实滚动容器是 .clip-item-scroll，document 仅兜底。
+  const getListScrollElement = () =>
+    document.querySelector('.clip-item-scroll') || document.scrollingElement
   if (!window.toTop) {
     window.toTop = () => {
-      if (document.scrollingElement) {
-        document.scrollingElement.scrollTop = 0
-      }
+      const el = getListScrollElement()
+      if (el) el.scrollTop = 0
     }
   }
   if (!window.toBottom) {
     window.toBottom = () => {
-      if (document.scrollingElement) {
-        document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight
-      }
+      const el = getListScrollElement()
+      if (el) el.scrollTop = el.scrollHeight
     }
   }
 }

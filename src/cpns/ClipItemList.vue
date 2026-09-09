@@ -3015,13 +3015,24 @@ onUnmounted(() => {
 <style lang="less" scoped>
 @import "../style";
 
+/* flex:1 + min-height:0 让列表在 .main 纵向 flex 中拿到确定高度；缺 min-height:0 时 flex 子项不会收缩，
+   .clip-item-scroll 就不会产生溢出，滚动会退化到 document（见 EM-2026-04-06-scroll-path）。 */
 .clip-item-list {
-    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
+/* 滚动区吃掉剩余高度，空态占位仍留在其下方可见 */
 .scroller {
-    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.empty-placeholder {
+    flex: none;
 }
 
 .clip-item-scroll {

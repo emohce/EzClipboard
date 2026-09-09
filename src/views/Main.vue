@@ -1961,14 +1961,8 @@ onMounted(() => {
         });
     }
 
-    // 列表懒加载
-    const scrollCallBack = (e) => {
-        const { scrollTop, clientHeight, scrollHeight } =
-            e.target.scrollingElement;
-        if (scrollTop + clientHeight + 5 >= scrollHeight) {
-            loadMoreData();
-        }
-    };
+    // 列表懒加载已由 ClipItemList 的 .clip-item-scroll @scroll 触底后 emit loadMore 承担；
+    // document 不再滚动，原 document 级 scroll 监听恒不触发，已移除。
 
     const isOtherEditableTarget = (target) => {
         if (!target || typeof target.closest !== "function") return false;
@@ -2015,7 +2009,6 @@ onMounted(() => {
         }
     };
 
-    document.addEventListener("scroll", scrollCallBack);
     document.addEventListener("keydown", keyDownCallBack, true);
 
     // Register hotkey features (main, clear-dialog, search)
@@ -2341,7 +2334,6 @@ onUnmounted(() => {
         tabPrefetchTimer = null;
     }
     delete window.resetPluginUiState;
-        document.removeEventListener("scroll", scrollCallBack);
         document.removeEventListener("keydown", keyDownCallBack, true);
     });
 });
@@ -2349,8 +2341,16 @@ onUnmounted(() => {
 
 <style lang="less" scoped>
 @import "../style";
+/* 主视图撑满视口并作为纵向 flex 容器：列表区因此拿到确定高度，滚动发生在 .clip-item-scroll 内而非 document。 */
+.main {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
 /* 为 fixed 顶栏预留纵向空间；须盖住单行·双行布局，避免过小重叠或过大空隙 */
+/* flex: none 必须保留：.main 变为纵向 flex 后，空占位块默认可收缩到 0，顶栏会压住首行 */
 .clip-break {
+    flex: none;
     height: 52px;
 }
 .clip-setting-btn {

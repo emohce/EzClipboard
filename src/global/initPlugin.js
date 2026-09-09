@@ -1326,8 +1326,17 @@ export default async function initPlugin() {
     }
     return undefined
   }
-  const toTop = () => (document.scrollingElement.scrollTop = 0)
-  const toBottom = () => (document.scrollingElement.scrollTop = document.scrollingElement.scrollHeight)
+  // 列表滚动发生在 .clip-item-scroll 内（document 不再滚动），这里必须取真实滚动容器，document 仅作兜底。
+  const getListScrollElement = () =>
+    document.querySelector('.clip-item-scroll') || document.scrollingElement
+  const toTop = () => {
+    const el = getListScrollElement()
+    if (el) el.scrollTop = 0
+  }
+  const toBottom = () => {
+    const el = getListScrollElement()
+    if (el) el.scrollTop = el.scrollHeight
+  }
 
   // 防止剪贴板写回循环的标志
   let isRestoringClipboard = false
