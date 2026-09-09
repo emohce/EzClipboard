@@ -78,16 +78,41 @@ export function useVirtualListScroll(options) {
     return { top, bottom }
   }
 
-  const getVisibleViewportInsets = () => {
-    if (typeof getVisibleInsets === 'function') {
-      return normalizeVisibleInsets(getVisibleInsets())
-    }
-    return { top: DEFAULT_VISIBLE_INSET, bottom: DEFAULT_VISIBLE_INSET }
+  const getVisibleViewportInsets = (extraTopInset = 0) => {
+    const base = typeof getVisibleInsets === 'function'
+      ? normalizeVisibleInsets(getVisibleInsets())
+      : { top: DEFAULT_VISIBLE_INSET, bottom: DEFAULT_VISIBLE_INSET }
+    const extra = Math.max(0, Number(extraTopInset) || 0)
+    if (!extra) return base
+    return { top: base.top + extra, bottom: base.bottom }
   }
 
-  const getNodeMetrics = (node, container) => {
+  const getRowNode = (index) => getFallbackRowNode(index) || getActiveNode(index)
+
+  /**
+   * reveal 余量：上移需要滚动时，在目标项上方额外让出 revealRows 行，
+   * 使光标不会贴死视口顶沿；已完全可见（含余量）时不产生任何滚动。
+   */
+  const getRevealTopInset = (index, options = {}) => {
+    const rows = Math.max(0, Number(options.revealRows) || 0)
+    if (!rows) return 0
+    const fallbackSize = typeof getEstimateSize === 'function'
+      ? Math.max(0, Number(getEstimateSize()) || 0)
+      : 0
+    let total = 0
+    for (let offset = 1; offset <= rows; offset += 1) {
+      const prevIndex = index - offset
+      if (prevIndex < 0) break
+      const rect = getRowNode(prevIndex)?.getBoundingClientRect?.()
+      const height = rect && rect.height > 0 ? rect.height : fallbackSize
+      total += height
+    }
+    return total
+  }
+
+  const getNodeMetrics = (node, container, extraTopInset = 0) => {
     if (!node || !container) return null
-    const viewportInsets = getVisibleViewportInsets()
+    const viewportInsets = getVisibleViewportInsets(extraTopInset)
     const nodeRect = node.getBoundingClientRect()
     const containerRect = container.getBoundingClientRect()
     const top = nodeRect.top - containerRect.top
@@ -111,8 +136,8 @@ export function useVirtualListScroll(options) {
     }
   }
 
-  const isNodeFullyVisible = (node, container) => {
-    const metrics = getNodeMetrics(node, container)
+  const isNodeFullyVisible = (node, container, extraTopInset = 0) => {
+    const metrics = getNodeMetrics(node, container, extraTopInset)
     if (!metrics) return false
     if (metrics.height > metrics.containerHeight + 1) {
       return metrics.top >= metrics.viewportTop - 1 &&
@@ -129,7 +154,7 @@ export function useVirtualListScroll(options) {
     return 'auto'
   }
 
-  const resolveScrollInstruction = (index, options = {}) => {
+  const resolveScrollInstructionCore = (index, options, revealTopInset) => {
     const node = getTargetNode(index)
     const container = getScrollContainer(node)
     const mode = options.scrollMode ||
@@ -156,7 +181,7 @@ export function useVirtualListScroll(options) {
       }
     }
 
-    const fullyVisible = isNodeFullyVisible(node, container)
+    const fullyVisible = isNodeFullyVisible(node, container, revealTopInset)
 
     if (mode === 'edge-align') {
       const edge = options.edge || options.block || 'nearest'
@@ -198,8 +223,24 @@ export function useVirtualListScroll(options) {
     }
   }
 
+  /**
+   * 不需要滚动时一律把 align 归一到 'nearest'：
+   * DOM 主通路对已完全可见的节点调用 scrollIntoView({block:'nearest'}) 是原生 no-op，
+   * 因此“完全可见则不滚”得以成立；而一旦可见性判断失准，nearest 仍会做最小滚动，
+   * 不会退回“程序滚动完全失效”（EM-2026-04-06-scroll-path）。
+   */
+  const resolveScrollInstruction = (index, options = {}) => {
+    const revealTopInset = getRevealTopInset(index, options)
+    const instruction = resolveScrollInstructionCore(index, options, revealTopInset)
+    return {
+      ...instruction,
+      align: instruction.shouldScroll ? instruction.align : 'nearest',
+      revealTopInset
+    }
+  }
+
   const applyManualScrollInContainer = (node, container, instruction) => {
-    const metrics = getNodeMetrics(node, container)
+    const metrics = getNodeMetrics(node, container, instruction?.revealTopInset)
     if (!metrics) return false
     const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
     let nextScrollTop = container.scrollTop
@@ -251,7 +292,7 @@ export function useVirtualListScroll(options) {
       const n = getTargetNode(index)
       const c = getScrollContainer(n)
       if (!n || !c) return
-      if (isNodeFullyVisible(n, c)) return
+      if (isNodeFullyVisible(n, c, instruction.revealTopInset)) return
       const didScroll = applyManualScrollInContainer(n, c, instruction)
       if (
         didScroll &&

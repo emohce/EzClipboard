@@ -1930,6 +1930,7 @@ const normalizeNavigationScrollOptions = (options = {}) => {
         scrollMode,
         edge,
         block: options.block,
+        revealRows: Math.max(0, Number(options.revealRows) || 0),
     };
 };
 
@@ -2021,6 +2022,7 @@ const runNavigationScroll = (action, attempt = 0) => {
         edge: action.edge,
         block: action.block,
         forceScroll: action.forceScroll,
+        revealRows: action.revealRows,
     });
     if (attempt >= 2 || action.type === "hold-scroll") {
         clearNavigationAction(action.id);
@@ -2108,11 +2110,14 @@ const STEP_NAV_EDGE_END_OPTIONS = Object.freeze({
     edge: "end",
     forceScroll: true,
 });
+// 上移：完全可见则不滚；确需滚动时做最小位移，并在上方留出 STEP_NAV_UP_REVEAL_ROWS 行上下文。
+// 把该常量置 0 即回到“严格完全可见才不滚、不留余量”的语义。
+const STEP_NAV_UP_REVEAL_ROWS = 1;
 const STEP_NAV_UP_REVEAL_OPTIONS = Object.freeze({
     actionType: "step-nav",
-    scrollMode: "edge-align",
-    edge: "end",
+    scrollMode: "nearest",
     forceScroll: false,
+    revealRows: STEP_NAV_UP_REVEAL_ROWS,
 });
 const LOAD_RECOVERY_OPTIONS = Object.freeze({
     source: "load-more",
@@ -2274,7 +2279,7 @@ function registerListHotkeyFeatures() {
             return true;
         }
 
-        // 正常向上移动：保持“完全可见则不滚；一旦需要滚动则用 end 对齐”，给上方留出一行。
+        // 正常向上移动：完全可见则不滚（底部锚点不动，只移光标）；确需滚动时最小位移并在上方留出一行。
         const nextIdx = activeIndex.value - 1;
         if (nextIdx <= 0) {
             return setKeyboardActiveIndex(nextIdx, {

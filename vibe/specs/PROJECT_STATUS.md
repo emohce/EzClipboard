@@ -15,11 +15,11 @@ Detailed requirements, plans, evidence, and implementation notes stay in task di
 
 ## Current Main Line
 
-Time window: 2026-07-15.
+Time window: 2026-09-09.
 
-Current focus: Tab 作用域置顶组合修复 — **2026-07-15 已补齐“单项置顶成员保存组合后无法循环触发”的上下文同步缺口，并通过 `node test-shortcut-command-system.js`、`node_modules/.bin/vite build`；uTools 实机全局组合粘贴仍需手工复测** ([260707/1147-tab-scoped-pin-group/spec.md](260707/1147-tab-scoped-pin-group/spec.md), [260707/1147-tab-scoped-pin-group/verify.md](260707/1147-tab-scoped-pin-group/verify.md), [../knowledge/quick-paste-runtime.md](../knowledge/quick-paste-runtime.md)).
+Current focus: 列表上移滚动锚定与滚动容器高度链修复 — **2026-09-09 已补齐 `html→.clip-item-scroll` 高度链（滚动不再回落 document）、上移改为“完全可见不滚 + 最小位移 + 上方留一行”，并顺带修复滚轮触底 `loadMore` 与翻页步长失真；`pnpm run build` 与浏览器实测通过，uTools 默认窗实机复测待办** ([260909/2054-list-up-nav-scroll-anchor/spec.md](260909/2054-list-up-nav-scroll-anchor/spec.md), [260909/2054-list-up-nav-scroll-anchor/verify.md](260909/2054-list-up-nav-scroll-anchor/verify.md)).
 
-Current core task: Tab 作用域置顶组合修复。Authoritative docs: [260707/1147-tab-scoped-pin-group/spec.md](260707/1147-tab-scoped-pin-group/spec.md), [260707/1147-tab-scoped-pin-group/plan.md](260707/1147-tab-scoped-pin-group/plan.md), [260707/1147-tab-scoped-pin-group/verify.md](260707/1147-tab-scoped-pin-group/verify.md), [../knowledge/quick-paste-runtime.md](../knowledge/quick-paste-runtime.md), [../knowledge/quick-paste-pin-group-cache.md](../knowledge/quick-paste-pin-group-cache.md), [../knowledge/technical-details.md](../knowledge/technical-details.md).
+Current core task: 列表上移滚动锚定与滚动容器高度链修复。Authoritative docs: [260909/2054-list-up-nav-scroll-anchor/spec.md](260909/2054-list-up-nav-scroll-anchor/spec.md), [260909/2054-list-up-nav-scroll-anchor/verify.md](260909/2054-list-up-nav-scroll-anchor/verify.md), [../vibe-doc/ai-error-memory/2026-04-06-scroll-path.md](../vibe-doc/ai-error-memory/2026-04-06-scroll-path.md), [../vibe-doc/ai-error-memory/2026-04-16-utools-default-window-list-visibility.md](../vibe-doc/ai-error-memory/2026-04-16-utools-default-window-list-visibility.md).
 
 Completed milestones:
 
