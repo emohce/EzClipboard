@@ -14,9 +14,6 @@ importers:
       '@element-plus/icons-vue':
         specifier: ^2.0.9
         version: 2.3.2(vue@3.5.27)
-      '@tanstack/vue-virtual':
-        specifier: ^3.13.12
-        version: 3.13.23(vue@3.5.27)
       dompurify:
         specifier: 3.4.10
         version: 3.4.10
@@ -421,14 +418,6 @@ packages:
 
   '@sxzz/popperjs-es@2.11.7':
     resolution: {integrity: sha512-Ccy0NlLkzr0Ex2FKvh2X+OyERHXJ88XJ1MXtsI9y9fGexlaXaVTPzBCRBwIxFkORuOb+uBqeu+RqnpgYTEZRUQ==}
-
-  '@tanstack/virtual-core@3.13.23':
-    resolution: {integrity: sha512-zSz2Z2HNyLjCplANTDyl3BcdQJc2k1+yyFoKhNRmCr7V7dY8o8q5m8uFTI1/Pg1kL+Hgrz6u3Xo6eFUB7l66cg==}
-
-  '@tanstack/vue-virtual@3.13.23':
-    resolution: {integrity: sha512-b5jPluAR6U3eOq6GWAYSpj3ugnAIZgGR0e6aGAgyRse0Yu6MVQQ0ZWm9SArSXWtageogn6bkVD8D//c4IjW3xQ==}
-    peerDependencies:
-      vue: ^2.7.0 || ^3.0.0
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
@@ -1144,13 +1133,6 @@ snapshots:
     optional: true
 
   '@sxzz/popperjs-es@2.11.7': {}
-
-  '@tanstack/virtual-core@3.13.23': {}
-
-  '@tanstack/vue-virtual@3.13.23(vue@3.5.27)':
-    dependencies:
-      '@tanstack/virtual-core': 3.13.23
-      vue: 3.5.27
 
   '@types/estree@1.0.8': {}
 

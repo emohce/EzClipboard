@@ -13,10 +13,6 @@
         class="drawer-item"
         :class="{ active: idx === activeIndex }"
         :title="op.title"
-        draggable="true"
-        @dragstart="onDragStart(idx)"
-        @dragover.prevent
-        @drop="onDrop(idx)"
         @click.stop="handleSelect(op, { sub: false })"
       >
         <span class="drawer-index">{{ idx + 1 }}</span>
@@ -41,7 +37,7 @@ const props = defineProps({
   placement: { type: String, default: 'right' }
 })
 
-const emit = defineEmits(['select', 'close', 'reorder'])
+const emit = defineEmits(['select', 'close'])
 
 const drawerStyle = computed(() => {
   if (props.placement === 'right') {
@@ -52,7 +48,6 @@ const drawerStyle = computed(() => {
 
 const localItems = ref([])
 const activeIndex = ref(0)
-const draggingIndex = ref(null)
 
 watch(
   () => props.items,
@@ -92,20 +87,6 @@ const addOutsideListeners = () => {
 const removeOutsideListeners = () => {
   document.removeEventListener('mousedown', handleOutsideClick, true)
   document.removeEventListener('contextmenu', handleOutsideClick, true)
-}
-
-const onDragStart = (idx) => {
-  draggingIndex.value = idx
-}
-
-const onDrop = (idx) => {
-  if (draggingIndex.value === null || draggingIndex.value === idx) return
-  const list = [...localItems.value]
-  const [moved] = list.splice(draggingIndex.value, 1)
-  list.splice(idx, 0, moved)
-  localItems.value = list
-  draggingIndex.value = null
-  emit('reorder', list)
 }
 
 const layerName = 'clip-drawer'

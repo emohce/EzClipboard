@@ -29,9 +29,6 @@ function manualChunks(id) {
   if (id.includes('/node_modules/vuedraggable/') || id.includes('/node_modules/sortablejs/')) {
     return 'vendor-drag'
   }
-  if (id.includes('/node_modules/@tanstack/')) {
-    return 'vendor-virtual'
-  }
   if (id.includes('/node_modules/sql.js/')) {
     return 'storage-sql'
   }

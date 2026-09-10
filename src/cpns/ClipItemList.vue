@@ -823,7 +823,6 @@ const stopImagePreview = (immediate = false) => {
         imagePreview.value.loadFailed = false;
         resetPreviewScrollHold();
         // 不调用 restorePreviewWindow，保持插件窗口大小不变
-        closeExternalPreview();
         return;
     }
     imagePreviewHideTimer = setTimeout(() => {
@@ -834,7 +833,6 @@ const stopImagePreview = (immediate = false) => {
         imagePreview.value.loadFailed = false;
         resetPreviewScrollHold();
         // 不调用 restorePreviewWindow，保持插件窗口大小不变
-        closeExternalPreview();
         imagePreviewHideTimer = null;
     }, 200);
 };
@@ -880,236 +878,6 @@ const handleImagePreviewKeydown = (event) => {
     }
 };
 
-let externalPreviewWindow = null;
-
-const escapePreviewText = (value = "") =>
-    String(value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-
-const openExternalPreview = (src, footer = "", ratio = 0.9) => {
-    if (!src) return false;
-
-    // 获取桌面屏幕尺寸
-    const screenWidth =
-        window.screen?.availWidth || window.screen?.width || 1920;
-    const screenHeight =
-        window.screen?.availHeight || window.screen?.height || 1080;
-
-    // 自动聚焦以接收键盘事件
-    const width = Math.floor(screenWidth * ratio);
-    const height = Math.floor(screenHeight * ratio);
-    const left = Math.max(0, Math.floor((screenWidth - width) / 2));
-    const top = Math.max(0, Math.floor((screenHeight - height) / 2));
-
-    let win = externalPreviewWindow;
-    if (!win || win.closed) {
-        // 创建新的预览窗口，添加更多特性
-        win = window.open(
-            "",
-            "clip-image-preview",
-            `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes,toolbar=no,menubar=no`,
-        );
-        externalPreviewWindow = win;
-    } else {
-        try {
-            win.resizeTo(width, height);
-            win.moveTo(left, top);
-        } catch (e) {}
-    }
-
-    if (!win) return false;
-
-    const footerHtml = footer
-        ? '<div class="footer">' +
-          escapePreviewText(footer).replace(/\n/g, "<br>") +
-          "</div>"
-        : "";
-
-    const html = [
-        "<!DOCTYPE html>",
-        "<html>",
-        "<head>",
-        '  <meta charset="utf-8" />',
-        '  <title>图片预览 - 超级剪贴板</title>',
-        "  <style>",
-        "    html, body { ",
-        "      margin: 0; ",
-        "      padding: 0; ",
-        "      width: 100%; ",
-        "      height: 100%; ",
-        "      background: #0f1115; ",
-        "      color: #e5e7eb; ",
-        "      overflow: hidden;",
-        "    }",
-        "    body { ",
-        "      display: flex; ",
-        "      flex-direction: column; ",
-        "      align-items: center; ",
-        "      justify-content: center; ",
-        "    }",
-        "    .wrap { ",
-        "      display: flex; ",
-        "      flex-direction: column; ",
-        "      align-items: center; ",
-        "      justify-content: center; ",
-        "      width: 100%; ",
-        "      height: 100%; ",
-        "      padding: 20px; ",
-        "      box-sizing: border-box; ",
-        "      position: relative;",
-        "    }",
-        "    img { ",
-        "      width: auto; ",
-        "      height: auto; ",
-        "      max-width: 100%; ",
-        "      max-height: calc(100% - 40px); ",
-        "      object-fit: contain; ",
-        "      border-radius: 8px; ",
-        "      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);",
-        "      transition: transform 0.2s ease;",
-        "    }",
-        "    img:hover {",
-        "      transform: scale(1.02);",
-        "    }",
-        "    .footer { ",
-        "      margin-top: 15px; ",
-        "      font-size: 13px; ",
-        "      color: #9ca3af; ",
-        "      text-align: center; ",
-        "      white-space: pre-wrap; ",
-        "      word-break: break-all; ",
-        "      max-width: 100%;",
-        "      opacity: 0.8;",
-        "    }",
-        "    .controls {",
-        "      position: absolute;",
-        "      top: 10px;",
-        "      right: 10px;",
-        "      display: flex;",
-        "      gap: 8px;",
-        "    }",
-        "    .control-btn {",
-        "      background: rgba(255, 255, 255, 0.1);",
-        "      border: 1px solid rgba(255, 255, 255, 0.2);",
-        "      color: #e5e7eb;",
-        "      padding: 6px 12px;",
-        "      border-radius: 4px;",
-        "      cursor: pointer;",
-        "      font-size: 12px;",
-        "      transition: all 0.2s ease;",
-        "    }",
-        "    .control-btn:hover {",
-        "      background: rgba(255, 255, 255, 0.2);",
-        "      border-color: rgba(255, 255, 255, 0.3);",
-        "    }",
-        "    .shortcuts {",
-        "      position: absolute;",
-        "      bottom: 10px;",
-        "      left: 10px;",
-        "      font-size: 11px;",
-        "      color: #6b7280;",
-        "      opacity: 0.6;",
-        "    }",
-        "  </style>",
-        "</head>",
-        "<body>",
-        '  <div class="wrap">',
-        '    <div class="controls">',
-        '      <button class="control-btn" onclick="window.close()">鍏抽棴 (ESC)</button>',
-        "    </div>",
-        '    <img src="' + src + '" alt="preview" />',
-        footerHtml,
-        '    <div class="shortcuts">ESC: 鍏抽棴绐楀彛</div>',
-        "  </div>",
-        "  <script>",
-        "    // ESC键关闭窗口",
-        '    document.addEventListener("keydown", function(e) {',
-        '      if (e.key === "Escape") {',
-        "        window.close();",
-        "      }",
-        "    });",
-        "    ",
-        "    // 绐楀彛澶辩劍鏃朵篃鍙互閫氳繃ESC鍏抽棴",
-        '    window.addEventListener("blur", function() {',
-        "      setTimeout(function() {",
-        "        window.focus();",
-        "      }, 100);",
-        "    });",
-        "    ",
-        "    // 自动调整窗口大小以适应图片",
-        '    const img = document.querySelector("img");',
-        "    if (img.complete) {",
-        "      adjustWindowSize();",
-        "    } else {",
-        "      img.onload = adjustWindowSize;",
-        "    }",
-        "    ",
-        "    function adjustWindowSize() {",
-        "      const imgWidth = img.naturalWidth;",
-        "      const imgHeight = img.naturalHeight;",
-        "      const screenWidth = screen.availWidth;",
-        "      const screenHeight = screen.availHeight;",
-        "      ",
-        "      // 如果图片比屏幕小，调整窗口大小以适应图片",
-        "      if (imgWidth < screenWidth * 0.8 && imgHeight < screenHeight * 0.8) {",
-        "        const newWidth = Math.min(imgWidth + 100, screenWidth * 0.8);",
-        "        const newHeight = Math.min(imgHeight + 150, screenHeight * 0.8);",
-        "        const left = Math.floor((screenWidth - newWidth) / 2);",
-        "        const top = Math.floor((screenHeight - newHeight) / 2);",
-        "        ",
-        "        try {",
-        "          window.resizeTo(newWidth, newHeight);",
-        "          window.moveTo(left, top);",
-        "        } catch(e) {}",
-        "      }",
-        "    }",
-        "  <\/script>",
-        "</body>",
-        "</html>",
-    ].join("\n");
-
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-
-    // 鑱氱劍鍒伴瑙堢獥鍙?
-    try {
-        win.focus();
-    } catch (e) {}
-
-    return true;
-};
-
-const focusUtoolsMainWindow = () => {
-    if (window.__isExitingPlugin) return;
-    if (typeof utools?.showMainWindow === "function") {
-        utools.showMainWindow();
-        return;
-    }
-    if (typeof utools?.showWindow === "function") {
-        utools.showWindow();
-        return;
-    }
-    if (typeof window.focus === "function") {
-        window.focus();
-    }
-};
-
-const closeExternalPreview = () => {
-    if (externalPreviewWindow && !externalPreviewWindow.closed) {
-        try {
-            externalPreviewWindow.close();
-        } catch (e) {}
-        externalPreviewWindow = null;
-        focusUtoolsMainWindow();
-    } else {
-        externalPreviewWindow = null;
-    }
-};
 
 const expandPreviewWindow = (maxWidth, maxHeight) => {
     const canExpandWidth = typeof utools?.setExpendWidth === "function";
@@ -1438,12 +1206,6 @@ const handleDrawerSelect = (op, meta = {}) => {
     if (!meta.sub) {
         drawerShow.value = false;
     }
-};
-
-const handleDrawerReorder = (list) => {
-    drawerItems.value = list;
-    drawerOrder.value = list.map((op) => op.id);
-    utools.dbStorage.setItem("drawer.order", drawerOrder.value);
 };
 
 // 全部信息内的菜单：与主层 ClipOperate 一致，filterOperate + applyDrawerOrder，用于右侧抽屉

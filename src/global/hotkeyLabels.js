@@ -46,7 +46,6 @@ export const FEATURE_LABELS = {
   'drawer-select-7': '抽屉内选第 7 项',
   'drawer-select-8': '抽屉内选第 8 项',
   'drawer-select-9': '抽屉内选第 9 项',
-  'drawer-select-range-summary': '抽屉内选第 1~9 项',
   'drawer-block': '拦截其他按键',
 
   'full-data-close': '关闭全文预览',
@@ -131,7 +130,6 @@ export const FEATURE_LABELS = {
   'list-quick-copy-7': '快速复制第 7 项',
   'list-quick-copy-8': '快速复制第 8 项',
   'list-quick-copy-9': '快速复制第 9 项',
-  'list-quick-copy-range-summary': '快速复制第 1~9 项',
   'list-drawer-sub-1': '抽屉内执行第 1 个功能',
   'list-drawer-sub-2': '抽屉内执行第 2 个功能',
   'list-drawer-sub-3': '抽屉内执行第 3 个功能',
@@ -141,7 +139,6 @@ export const FEATURE_LABELS = {
   'list-drawer-sub-7': '抽屉内执行第 7 个功能',
   'list-drawer-sub-8': '抽屉内执行第 8 个功能',
   'list-drawer-sub-9': '抽屉内执行第 9 个功能',
-  'list-drawer-sub-range-summary': '抽屉内执行第 1~9 个功能',
   'tag-search': '打开收藏标签搜索'
 }
 
