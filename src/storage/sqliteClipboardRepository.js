@@ -38,6 +38,7 @@ const rowToItem = (row) => ({
   type: row.type,
   data: row.data || '',
   locked: row.locked === 1,
+  collected: row.collected === 1,
   createTime: row.create_time || 0,
   updateTime: row.update_time || 0,
   collectTime: row.collect_time || 0,
@@ -515,7 +516,20 @@ export class SQLiteClipboardRepository {
       createTime: this.dataBase.createTime || Date.now(),
       updateTime: Date.now()
     }
-    this.collectIdSet = new Set(this.dataBase.collects)
+    this.collectIdSet = new Set(this.selectCollectedIds())
+  }
+
+  // 收藏判定必须覆盖全部收藏项：dataBase.collects 受 TAB_CACHE_LIMIT 截断，
+  // 直接用它会让第 TAB_CACHE_LIMIT+1 条以后的收藏被误判为未收藏（静默取消收藏 / 绕过删除保护）。
+  selectCollectedIds() {
+    const stmt = this.db.prepare('SELECT id FROM items WHERE collected = 1')
+    try {
+      const ids = []
+      while (stmt.step()) ids.push(stmt.getAsObject().id)
+      return ids
+    } finally {
+      stmt.free()
+    }
   }
 
   selectTagRows() {
@@ -648,7 +662,7 @@ export class SQLiteClipboardRepository {
       const next = existing
         ? { ...existing, updateTime: Date.now() }
         : { ...item, locked: item.locked === true, createTime: item.createTime || Date.now(), updateTime: item.updateTime || Date.now() }
-      this.upsertItemRaw(next, existing ? this.isCollected(item.id) : false)
+      this.upsertItemRaw(next, existing ? existing.collected === true : false)
       this.refreshCache()
       return true
     })
@@ -658,7 +672,7 @@ export class SQLiteClipboardRepository {
     return this.runInTransaction(() => {
       const item = this.getById(id)
       if (!item) return false
-      this.upsertItemRaw({ ...item, ...patch, updateTime: patch.updateTime || item.updateTime }, this.isCollected(id))
+      this.upsertItemRaw({ ...item, ...patch, updateTime: patch.updateTime || item.updateTime }, item.collected === true)
       this.refreshCache()
       return true
     })
@@ -691,7 +705,7 @@ export class SQLiteClipboardRepository {
           skippedLocked++
           return
         }
-        if (this.isCollected(item.id) && !force) {
+        if (item.collected === true && !force) {
           skippedCollected++
           return
         }

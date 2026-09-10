@@ -56,12 +56,20 @@ const sqliteRepositorySource = fs.readFileSync(
 );
 
 assert.ok(
-    sqliteRepositorySource.includes('this.isCollected(item.id) && !force'),
-    'SQLite removeItems must check collection state with the current item id',
+    sqliteRepositorySource.includes('item.collected === true && !force'),
+    'SQLite removeItems must check collection state from the row it already selected',
 );
 assert.ok(
     !sqliteRepositorySource.includes('this.isCollected(id) && !force'),
     'SQLite removeItems must not reference an undefined id variable',
+);
+assert.ok(
+    sqliteRepositorySource.includes('collected: row.collected === 1'),
+    'rowToItem must map the collected column, otherwise per-row collect checks are always false',
+);
+assert.ok(
+    sqliteRepositorySource.includes('new Set(this.selectCollectedIds())'),
+    'collectIdSet must be built from all collected ids, not the TAB_CACHE_LIMIT-truncated cache',
 );
 
 console.log('Syntax test passed - no errors found');
