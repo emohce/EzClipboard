@@ -24,6 +24,3 @@ const openFile = (path) => utools.shellOpenPath(path)
 const getIcon = (path) => utools.getFileIcon(path)
 </script>
 
-<style lang="less" scoped>
-@import '../style';
-</style>

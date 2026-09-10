@@ -40,6 +40,3 @@ const operation = computed(() => [...defaultOperation, ...setting.operation.cust
 const { handleOperateClick, filterOperate } = useClipOperate({ emit, currentActiveTab: () => props.currentActiveTab })
 </script>
 
-<style lang="less" scoped>
-@import '../style';
-</style>

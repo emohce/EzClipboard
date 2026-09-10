@@ -143,7 +143,6 @@ onUnmounted(() => {
 </script>
 
 <style lang="less" scoped>
-@import '../style';
 .fade-enter-active,
 .fade-leave-active {
   transition: all 0.15s ease;

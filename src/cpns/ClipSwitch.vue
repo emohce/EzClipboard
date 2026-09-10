@@ -101,7 +101,3 @@ defineExpose({
   collectSubTabsList
 })
 </script>
-
-<style lang="less" scoped>
-@import '../style';
-</style>

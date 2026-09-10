@@ -2340,7 +2340,6 @@ onUnmounted(() => {
 </script>
 
 <style lang="less" scoped>
-@import "../style";
 /* 主视图撑满视口并作为纵向 flex 容器：列表区因此拿到确定高度，滚动发生在 .clip-item-scroll 内而非 document。 */
 .main {
     height: 100%;

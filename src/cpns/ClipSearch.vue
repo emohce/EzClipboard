@@ -186,7 +186,3 @@ registerPluginEnterHandler((action) => {
   }
 })
 </script>
-
-<style lang="less" scoped>
-@import '../style';
-</style>

@@ -338,7 +338,3 @@ const handleImageError = (event) => {
 
 const handleImageLoad = () => {};
 </script>
-
-<style lang="less" scoped>
-@import "../style";
-</style>
