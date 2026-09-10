@@ -77,13 +77,49 @@ Date: 2026-09-09
 `removedIds` 与实际删除一致。测试内以 `dataBase.data.length === 30` 作为前置断言，
 确保该用例确实落在「缓存截断」这一目标场景上。
 
+## 一之三、P1-3 / P1-4（2026-09-09 续做）
+
+### P1-3 maxsize / maxage 下沉到 SQLite 主路径
+
+修复前该清理只存在于 legacy JSON `DB`（maxsize 在 `addItem`、maxage 在 `init`），
+SQLite 主路径完全没有实现，设置页配了不生效。
+
+| 新增 | 说明 |
+| --- | --- |
+| `setRetentionPolicy({maxsize, maxage})` | 由 `initPlugin` 注入并订阅 `SETTING_UPDATED_EVENT` 同步；**存储层不反向依赖 `global/readSetting`**，避免分层倒置 |
+| `enforceRetention({force, now})` | 收藏与锁定项一律豁免，判定走 SQL 列；maxage 先删过旧项，maxsize 再按有效更新时间升序补删 |
+| `deleteRowsInBatches` | 从 `removeByRange` 抽出，两处共用同一条 blob → items → items_fts 清理链路 |
+| `countItems` / `selectOldestRows` | 支撑 maxsize 的计数与选取 |
+
+按报告风险项处理：**不在 `init` 中调用** `enforceRetention`——那时 `refreshCache` 尚未建缓存，
+且会把删除耗时算进启动时间。改为在 `addItem` 的事务**之外**触发（`enforceRetention` 自带
+`runInTransaction`，嵌套 `BEGIN` 会失败），并做 60s 节流。
+
+保留 `initPlugin.js` 内 legacy `DB` 的两处原实现未动（迁移导入集合 + JSON 回退路径的唯一实现）。
+
+> 行为差异（有意为之）：新实现**同时豁免锁定项**，legacy JSON 实现只豁免收藏项。
+> 这与 README「可锁定避免误删」的承诺一致。
+
+### P1-4 updateItem 快路径
+
+`patch` 仅含 `updateTime` / `sourceApp` / `sourceWindowTitle` 时直写白名单列，
+不 `getById`、不进 `blobStore`、不重建 `search_text`。重复复制一张 5MB 截图原本要付
+「全量读 blob → 原样写回 → 整库 export」。
+
+- 跳过 `upsertFts` 的前提已核实：`buildSearchIndex`（`src/storage/searchIndex.js`）
+  只取 alias/remark/tags/data/文件路径，**不含** 这三列，也不含 `updateTime`。
+- **保留 `refreshCache`**：`dataBase.data` 是主界面数据源，跳过会导致重复复制不置顶、
+  SQLite + 轮询模式下列表不刷新。
+- 用 `getRowsModified()` 保持「不存在的 id 返回 false」的原契约。
+- 含 `data` 的 patch 一律走原慢路径，避免 `data` 与 `data_path` 不一致。
+
 ## 二、验证证据
 
 ### 自动化
 
 | 项 | 结果 |
 | --- | --- |
-| 15 个测试脚本全量 | **15 / 15 通过** |
+| 16 个测试脚本全量 | **16 / 16 通过** |
 | `node_modules/.bin/vite build` | 通过，无告警击穿 |
 | 悬空引用扫描（21 个已删符号/文件名） | **0 处残留** |
 
@@ -126,7 +162,12 @@ CSS 去重的安全性以**选择器集合与声明集合逐一比对**验证（
 1. **Esc 修复未取得运行时验证**。dev 环境的启动 MessageBox「重要版本更新提示」无法关闭（dev stub 用内存存储，每次 reload 重现），而 `Setting.vue` 的 `isSettingMessageBoxOpen()` 守卫在设计上让 Esc 成为 no-op，该分支在 dev 里无法被触达。代码层面可确认：修复前 `closeTopSettingOverlay()` 无该对话框分支 → 返回 false → 走 `emit('back')` 退出整页；修复后新分支返回 true 并 `stopPropagation`。**属代码推理，非实测。**
 2. **全部 uTools 实机复测未执行**：收藏超 30 条后的星标与删除保护、明暗两套主题的视觉回归、冷启动 quick-paste（macOS/Windows 两条路径）、抽屉排序改由设置页管理后的实际手感。
 3. **审计本身的完整性批判未跑完**（会话额度中断）。以下维度未系统扫描，不能视为无问题：错误处理与异常恢复、并发/竞态、安全（DOMPurify 使用、`file://` 路径、SQL 拼接）、可访问性、国际化、Windows/Linux 差异、内存泄漏。
-4. **P1/P2 未动**，按 [report.md](report.md) 路线图执行。
+4. **新发现的遗留问题（本次未修）**：内容由外置缩回内联时 `data_path` 不会被清空，
+   根因是 `itemToParams` 的 `prepared.dataPath || dbItem.dataPath` 回退把旧路径捡了回来
+   （`prepareForDb` 本身已正确返回空串）。读取不受影响——`hydrateItem` 在 `data` 非空时短路——
+   但会遗留孤儿 blob 文件。属既有缺陷，与本次改动无关（慢路径未改动），
+   已在 `test-retention-and-fastupdate.mjs` 中以断言固定现状，待单独立项修复。
+5. **其余 P1/P2 未动**，按 [report.md](report.md) 路线图执行。
 
 ## 四、并发提示
 

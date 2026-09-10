@@ -21,6 +21,18 @@ const EFFECTIVE_UPDATE_TIME =
 const EFFECTIVE_COLLECT_TIME =
   'COALESCE(NULLIF(collect_time,0), NULLIF(update_time,0), NULLIF(create_time,0), 0)'
 
+// 保留策略（maxsize / maxage）由 initPlugin 注入，存储层不反向依赖 global/readSetting
+const RETENTION_THROTTLE_MS = 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// updateItem 快路径可直写的列。三者都不参与 buildSearchIndex，
+// 因此可以跳过 upsertFts；一旦此表新增字段，必须先确认它不进搜索索引。
+const FAST_UPDATE_COLUMNS = {
+  updateTime: 'update_time',
+  sourceApp: 'source_app',
+  sourceWindowTitle: 'source_window_title'
+}
+
 const asArray = (value) => (Array.isArray(value) ? value : [])
 const now = () => Date.now()
 
@@ -110,6 +122,8 @@ export class SQLiteClipboardRepository {
     this.mutationVersion = Date.now()
     this.persistTimer = null
     this.ftsEnabled = false
+    this.retention = { maxsize: null, maxage: null }
+    this.lastRetentionAt = 0
     this.collectIdSet = new Set()
     this.tabCache = new Map()
     this.dataBase = {
@@ -665,7 +679,7 @@ export class SQLiteClipboardRepository {
   }
 
   addItem(item) {
-    return this.runInTransaction(() => {
+    const result = this.runInTransaction(() => {
       const existing = this.getById(item.id)
       const next = existing
         ? { ...existing, updateTime: Date.now() }
@@ -674,9 +688,31 @@ export class SQLiteClipboardRepository {
       this.refreshCache()
       return true
     })
+    // 必须在事务外：enforceRetention 自带 runInTransaction，嵌套 BEGIN 会失败
+    this.enforceRetention()
+    return result
   }
 
   updateItem(id, patch = {}) {
+    const keys = Object.keys(patch)
+    // 快路径：patch 仅含白名单列时直写，不 getById、不进 blobStore、不重建 search_text。
+    // 重复复制一张 5MB 截图原本要付「全量读 blob -> 原样写回 -> 整库 export」。
+    // refreshCache 必须保留：dataBase.data 是主界面数据源，跳过会导致重复复制不置顶、列表不刷新。
+    if (keys.length > 0 && keys.every((key) => key in FAST_UPDATE_COLUMNS)) {
+      return this.runInTransaction(() => {
+        const assignments = []
+        const params = { $id: id }
+        keys.forEach((key, index) => {
+          assignments.push(`${FAST_UPDATE_COLUMNS[key]} = $v${index}`)
+          params[`$v${index}`] =
+            key === 'updateTime' ? Number(patch[key]) || Date.now() : String(patch[key] ?? '')
+        })
+        this.db.run(`UPDATE items SET ${assignments.join(', ')} WHERE id = $id`, params)
+        if (this.db.getRowsModified() === 0) return false
+        this.refreshCache()
+        return true
+      })
+    }
     return this.runInTransaction(() => {
       const item = this.getById(id)
       if (!item) return false
@@ -765,14 +801,22 @@ export class SQLiteClipboardRepository {
     const rows = this.selectRangeRows(where.join(' AND '), params)
     const skippedLocked = force ? 0 : rows.filter((row) => row.locked === 1).length
     const targets = force ? rows : rows.filter((row) => row.locked !== 1)
+    const removedIds = this.deleteRowsInBatches(targets, { batchSize, onProgress })
+    this.refreshCache()
+    return { removed: removedIds.length, removedIds, skippedLocked, candidates: rows.length }
+  }
+
+  // 分批提交：单个大事务会阻塞 UI；queuePersist 有 120ms 去抖，多批仍只落盘一次。
+  // 复用既有清理链路：blob 资产 -> items -> items_fts，缺一即产生孤儿资产或脏索引。
+  // 不在此处 refreshCache，由调用方在全部批次结束后统一刷新一次。
+  deleteRowsInBatches(rows = [], options = {}) {
+    const { batchSize = 200, onProgress = null } = options
     const removedIds = []
-    // 分批提交：单个大事务会阻塞 UI；queuePersist 有 120ms 去抖，多批仍只落盘一次
-    for (let offset = 0; offset < targets.length; offset += batchSize) {
-      const batch = targets.slice(offset, offset + batchSize)
+    for (let offset = 0; offset < rows.length; offset += batchSize) {
+      const batch = rows.slice(offset, offset + batchSize)
       this.runInTransaction(() => {
         const { params: idParams, placeholders } = this.makeIdParams(batch.map((row) => row.id))
         const inSql = placeholders.join(',')
-        // 复用既有清理链路：blob 资产 -> items -> items_fts，缺一即产生孤儿资产或脏索引
         batch.forEach((row) => this.blobStore.removeForItem({ dataPath: row.data_path }))
         this.db.run(`DELETE FROM items WHERE id IN (${inSql})`, idParams)
         if (this.ftsEnabled) {
@@ -781,10 +825,75 @@ export class SQLiteClipboardRepository {
         return true
       })
       batch.forEach((row) => removedIds.push(row.id))
-      onProgress?.({ current: removedIds.length, total: targets.length })
+      onProgress?.({ current: removedIds.length, total: rows.length })
     }
-    this.refreshCache()
-    return { removed: removedIds.length, removedIds, skippedLocked, candidates: rows.length }
+    return removedIds
+  }
+
+  countItems(whereSql = '1=1', params = {}) {
+    const stmt = this.db.prepare(`SELECT COUNT(*) AS total FROM items WHERE ${whereSql}`)
+    try {
+      stmt.bind(params)
+      stmt.step()
+      return stmt.getAsObject().total || 0
+    } finally {
+      stmt.free()
+    }
+  }
+
+  selectOldestRows(whereSql, limit) {
+    const stmt = this.db.prepare(
+      `SELECT id, locked, data_path FROM items WHERE ${whereSql} ORDER BY ${EFFECTIVE_UPDATE_TIME} ASC LIMIT ${Number(limit)}`
+    )
+    try {
+      const rows = []
+      while (stmt.step()) rows.push(stmt.getAsObject())
+      return rows
+    } finally {
+      stmt.free()
+    }
+  }
+
+  // 由 initPlugin 注入 setting.database.{maxsize,maxage}，避免存储层依赖 global/readSetting
+  setRetentionPolicy(policy = {}) {
+    const size = Number(policy.maxsize)
+    const age = Number(policy.maxage)
+    this.retention = {
+      maxsize: Number.isFinite(size) && size > 0 ? Math.floor(size) : null,
+      maxage: Number.isFinite(age) && age > 0 ? age : null
+    }
+    return this.retention
+  }
+
+  // maxsize / maxage 清理。收藏与锁定项一律豁免，判定走 SQL 列而非 isCollected。
+  // 只在写入路径（addItem）触发并做节流；不在 init 中调用——那时 refreshCache 尚未建缓存，
+  // 且会把删除耗时算进启动时间。
+  enforceRetention(options = {}) {
+    const { force = false, now = Date.now() } = options
+    const { maxsize, maxage } = this.retention
+    if (maxsize == null && maxage == null) return { removed: 0, removedIds: [] }
+    if (!force && now - this.lastRetentionAt < RETENTION_THROTTLE_MS) {
+      return { removed: 0, removedIds: [], throttled: true }
+    }
+    this.lastRetentionAt = now
+    const removedIds = []
+    if (maxage != null) {
+      const stale = this.selectRangeRows(
+        `collected = 0 AND locked = 0 AND ${EFFECTIVE_UPDATE_TIME} < $cutoff`,
+        { $cutoff: now - maxage * DAY_MS }
+      )
+      removedIds.push(...this.deleteRowsInBatches(stale))
+    }
+    if (maxsize != null) {
+      // 总数含锁定项（与旧 JSON 实现口径一致），但只删未锁定的最旧项
+      const exceed = this.countItems('collected = 0') - maxsize
+      if (exceed > 0) {
+        const oldest = this.selectOldestRows('collected = 0 AND locked = 0', exceed)
+        removedIds.push(...this.deleteRowsInBatches(oldest))
+      }
+    }
+    if (removedIds.length) this.refreshCache()
+    return { removed: removedIds.length, removedIds }
   }
 
   // 收藏页「清空」的语义是取消收藏而非删除，因此走 UPDATE collected = 0，

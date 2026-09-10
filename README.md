@@ -52,8 +52,8 @@
 
 ## 数据与配置
 - 存储结构：底层 SQLite 存储，含剪贴板历史、收藏、标签等；首次启动自动迁移旧 JSON 数据并备份，路径按设备 ID 区分 @src/global/initPlugin.js#53-190.
-- 清理策略：maxsize（最大条数）/ maxage（最长天数）配置项位于设置页，收藏不受影响；设置来源 `readSetting`。
-  > 当前仅在 JSON 回退路径生效（实现在 `src/global/initPlugin.js` 的 legacy `DB` 内）。SQLite 主路径尚未实现该清理，`src/storage/sqliteClipboardRepository.js` 中无 maxsize/maxage 逻辑；详见审计报告 A3 / P1-3。
+- 清理策略：maxsize（最大条数）/ maxage（最长天数）配置项位于设置页，**收藏与锁定项均豁免**；设置来源 `readSetting`。
+  > SQLite 主路径由 `setRetentionPolicy` / `enforceRetention` 实现（`src/storage/sqliteClipboardRepository.js`），策略由 `initPlugin` 注入并随设置变更同步；清理在写入路径触发并做 60s 节流，不在启动时执行。JSON 回退路径仍沿用 legacy `DB` 内的原实现（maxsize 在 `addItem`、maxage 在 `init`），该实现不豁免锁定项。
 - 迁移与回退：首次启动自动检测旧 JSON 数据，备份后迁移至 SQLite；保留 JSON 回退机制 @src/storage/jsonMigration.js.
 - 来源信息：解析剪贴板文件路径存入 `item.sourcePaths` / `fromFileSource` / `hasSourceInfo`；`sourceApp` / `sourceWindowTitle` 两列保留但当前恒为空（见「核心特性」注）。
 - 文件处理：文件/图片保留 originPaths，列表支持图片预览和原始路径展示 @src/global/initPlugin.js#144-159 @src/cpns/ClipItemList.vue#47-101.
@@ -89,6 +89,6 @@
 
 ## 测试建议
 - 正常：文本/图片/文件入库与去重；收藏/取消收藏；锁定与强制删除；多选合并粘贴；快捷键导航。
-- 边界：空文本不入库；大图预览；maxsize/maxage（当前仅 JSON 回退路径）；快捷键覆盖。
+- 边界：空文本不入库；大图预览；maxsize/maxage 生效且收藏/锁定项豁免；快捷键覆盖。
 - 安全：文件原路径展示正确，锁定项不被常规删除。
 - 回归：监听降级后仍能入库；自定义功能匹配与排序。

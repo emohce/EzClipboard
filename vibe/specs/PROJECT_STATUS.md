@@ -23,6 +23,7 @@ Current core task: 列表上移滚动锚定与滚动容器高度链修复。Auth
 
 Completed milestones:
 
+- P1-3 / P1-4 保留策略与写入热路径 (2026-09-09): SQLite 主路径补齐 maxsize / maxage（`setRetentionPolicy` 由 `initPlugin` 注入并随设置变更同步，`enforceRetention` 在 addItem 事务外触发并做 60s 节流，收藏与锁定项均豁免，不在 init 中执行以免拖慢启动）；`updateItem` 增加白名单快路径（`updateTime` / `sourceApp` / `sourceWindowTitle` 直写列，跳过 blob 读写与 FTS 重建，保留 refreshCache），消除重复复制大图时的「全量读 blob -> 原样写回」放大。legacy JSON 的两处原实现保留未动。新增 `test-retention-and-fastupdate.mjs`；16/16 测试与 `vite build` 通过 — [260909/2133-full-code-audit/verify.md](260909/2133-full-code-audit/verify.md).
 - P1-1 / P1-2 清空范围下沉 (2026-09-09): 仓库层新增 `removeByRange` / `removeCollectsByRange`（SQLite 主路径与 JSON 回退路径同名同签名），`Main.vue` 两条清空链路改为优先走仓库层。修复「清空最多只删 30 条却提示成功」——豁免判定走 SQL 列、返回真实 `removedIds` 供可见列表与置顶缓存同步、分批提交避免大事务阻塞、收藏页仍走 `UPDATE collected = 0` 保持取消收藏语义。新增 `test-clear-range.mjs`，实测单次清空 60 条突破 30 条上限；15/15 测试与 `vite build` 通过 — [260909/2133-full-code-audit/verify.md](260909/2133-full-code-audit/verify.md).
 - 全量代码核验与 P0 修复 (2026-09-09): 覆盖需求贴合度 / 架构精简 / 操作提速三个方向，25 条发现经对抗验证确认、9 条驳回。已落地全部 P0：收藏数据丢失修复（`rowToItem` 补 `collected`、`collectIdSet` 脱离 `TAB_CACHE_LIMIT` 截断、三处消费点改用行上字段，新增 `test-collect-beyond-cache.mjs` 并完成反证）、首屏 CSS 由 1,078,099 B 降至 183,789 B（选择器与声明集合零丢失）、`registerElement` 补注册 Radio 恢复「快捷键配置管理」运行源入口、`hotkeyRegistry` 缓存 command-aware 绑定、quick-paste flush 上移至 mount 之前、删除 10 个死文件与 3 处 in-file 死块（约 1650 行）、清理死配置与 `@tanstack/vue-virtual` 死依赖、按决策移除抽屉拖拽手势（排序入口收敛到设置页）。**随死码批 2 移除了旧「JSON → uTools DB」迁移与回滚能力**，当前迁移主线为 JSON → SQLite。14/14 测试与 `vite build` 通过 — [260909/2133-full-code-audit/spec.md](260909/2133-full-code-audit/spec.md), [260909/2133-full-code-audit/verify.md](260909/2133-full-code-audit/verify.md), [260909/2133-full-code-audit/report.md](260909/2133-full-code-audit/report.md).
 - UI interaction optimization (v1.2.1): All 9 requirements implemented including pin/group features, page scroll shortcuts, cache navigation, uTools global commands, and hotkey runtime refresh.
@@ -50,8 +51,9 @@ Completed milestones:
 Open follow-ups:
 
 - **P0 遗留验证 (2026-09-09)**：Esc 只关对话框不退设置页的修复未取得运行时验证（dev 环境启动 MessageBox 无法关闭，`isSettingMessageBoxOpen()` 使 Esc 成为设计上的 no-op）；收藏 >30 条的星标与删除保护、明暗主题视觉回归、冷启动 quick-paste 两平台路径均待 uTools 实机复测 — [260909/2133-full-code-audit/verify.md](260909/2133-full-code-audit/verify.md).
+- **外置 payload 缩回内联时 data_path 未清空 (2026-09-09 新发现，未修)**：`itemToParams` 的 `prepared.dataPath || dbItem.dataPath` 回退把旧路径捡回，遗留孤儿 blob 文件；读取不受影响（`hydrateItem` 在 `data` 非空时短路）。已在 `test-retention-and-fastupdate.mjs` 固定现状，待单独立项 — [260909/2133-full-code-audit/verify.md](260909/2133-full-code-audit/verify.md).
 - **审计未覆盖维度 (2026-09-09)**：错误处理与异常恢复、并发/竞态、安全（DOMPurify 使用、`file://` 路径、SQL 拼接）、可访问性、国际化、Windows/Linux 差异、内存泄漏 — 完整性批判未跑完，不能视为无问题。
-- **P1 / P2 排期 (2026-09-09)**：maxsize/maxage 在 SQLite 主路径缺失、`updateItem` 快路径、legacy JSON 惰性化、巨石拆分、FTS 方案定夺、真虚拟滚动 — 逐条见 [260909/2133-full-code-audit/report.md](260909/2133-full-code-audit/report.md) 路线图。
+- **P1 / P2 排期 (2026-09-09)**：legacy JSON 惰性化、巨石拆分、FTS 方案定夺、真虚拟滚动 — 逐条见 [260909/2133-full-code-audit/report.md](260909/2133-full-code-audit/report.md) 路线图。
 - uTools production-shell first-run shortcut migration, restart override persistence, and `shortcutSync` multi-device local/public data-shape verification.
 - Macro conflict preview UX: keep conflict confirmation separate from command record hard-block behavior.
 

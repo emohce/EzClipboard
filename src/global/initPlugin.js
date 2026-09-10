@@ -11,7 +11,7 @@ const {
   time
 } = window.exports
 import { copy, paste, createFile, getNativeId, cleanupAliasStateForDeletedItem, isAliasPasting } from '../utils'
-import setting from './readSetting'
+import setting, { SETTING_UPDATED_EVENT } from './readSetting'
 import { initWindowManager, setPluginWindowSize } from './windowManager'
 import { generateThumbnail, shouldGenerateThumbnail } from './imageUtils'
 import { createClipboardRepository } from '../storage/clipboardRepository'
@@ -1603,6 +1603,16 @@ export default async function initPlugin() {
   console.log('[initPlugin] 插件初始化完成')
 
   window.db = db
+  // 注入 maxsize / maxage：存储层不反向依赖 readSetting，由此处推送并在设置变更时同步。
+  // 仅对 SQLite 主路径生效；JSON 回退路径的清理仍在 legacy DB 内按原实现执行。
+  const applyRetentionPolicy = () => {
+    db.setRetentionPolicy?.({
+      maxsize: setting?.database?.maxsize ?? null,
+      maxage: setting?.database?.maxage ?? null
+    })
+  }
+  applyRetentionPolicy()
+  window.addEventListener(SETTING_UPDATED_EVENT, applyRetentionPolicy)
   registerQuickPasteRuntime()
   const onWindowMayHide = () => {
     if (document.visibilityState === 'hidden') {

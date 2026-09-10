@@ -190,6 +190,16 @@ export class ClipboardRepository {
     return { removed, skippedLocked, skippedCollected: 0, missing: 0 }
   }
 
+  // JSON 回退路径的 maxsize / maxage 清理仍由 legacy DB 内的原实现负责
+  //（maxsize 在 DB.addItem、maxage 在 DB.init），此处显式 no-op 以统一调用点。
+  setRetentionPolicy() {
+    return { maxsize: null, maxage: null }
+  }
+
+  enforceRetention() {
+    return { removed: 0, removedIds: [] }
+  }
+
   // 与 SQLite 主路径同名同签名，保证 Main.vue 的清空链路在降级态行为一致。
   // 该 facade 的 dataBase 是全量（非 30 条截断），因此可直接在 JS 侧筛选。
   removeByRange(options = {}) {
