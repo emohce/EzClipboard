@@ -13,6 +13,14 @@ const META_JSON_MIGRATION_FINGERPRINT = 'json_migration_fingerprint'
 const META_JSON_MIGRATION_HISTORY = 'json_migration_history'
 const TAB_CACHE_LIMIT = 30
 
+// 与 Main.vue filterItemsByRange 的 JS 回退链一一对应：
+//   普通页  item.updateTime  || item.collectTime || item.createTime || 0
+//   收藏页  item.collectTime || item.updateTime  || item.createTime || 0
+const EFFECTIVE_UPDATE_TIME =
+  'COALESCE(NULLIF(update_time,0), NULLIF(collect_time,0), NULLIF(create_time,0), 0)'
+const EFFECTIVE_COLLECT_TIME =
+  'COALESCE(NULLIF(collect_time,0), NULLIF(update_time,0), NULLIF(create_time,0), 0)'
+
 const asArray = (value) => (Array.isArray(value) ? value : [])
 const now = () => Date.now()
 
@@ -724,6 +732,94 @@ export class SQLiteClipboardRepository {
       this.refreshCache()
       return { removed, skippedLocked, skippedCollected, missing: Math.max(0, idSet.size - items.length) }
     })
+  }
+
+  // 只取清理判定必需的三列，避免把整库行读进内存
+  selectRangeRows(whereSql, params = {}) {
+    const stmt = this.db.prepare(`SELECT id, locked, data_path FROM items WHERE ${whereSql}`)
+    try {
+      stmt.bind(params)
+      const rows = []
+      while (stmt.step()) rows.push(stmt.getAsObject())
+      return rows
+    } finally {
+      stmt.free()
+    }
+  }
+
+  // 按 Tab + 时间范围直接在库内清理，不受 TAB_CACHE_LIMIT 运行缓存限制。
+  // 豁免判定一律走 SQL 列（collected = 0 / locked = 0），不使用 isCollected。
+  // 返回真实 id 列表：调用方要用它同步可见列表、置顶与置顶组缓存，只回计数会让界面与库脱节。
+  removeByRange(options = {}) {
+    const { tab = 'all', since = null, force = false, batchSize = 200, onProgress = null } = options
+    const where = ['collected = 0']
+    const params = {}
+    if (tab && !['all', 'collect'].includes(tab)) {
+      where.push('type = $type')
+      params.$type = tab
+    }
+    if (since != null) {
+      where.push(`${EFFECTIVE_UPDATE_TIME} >= $since`)
+      params.$since = Number(since) || 0
+    }
+    const rows = this.selectRangeRows(where.join(' AND '), params)
+    const skippedLocked = force ? 0 : rows.filter((row) => row.locked === 1).length
+    const targets = force ? rows : rows.filter((row) => row.locked !== 1)
+    const removedIds = []
+    // 分批提交：单个大事务会阻塞 UI；queuePersist 有 120ms 去抖，多批仍只落盘一次
+    for (let offset = 0; offset < targets.length; offset += batchSize) {
+      const batch = targets.slice(offset, offset + batchSize)
+      this.runInTransaction(() => {
+        const { params: idParams, placeholders } = this.makeIdParams(batch.map((row) => row.id))
+        const inSql = placeholders.join(',')
+        // 复用既有清理链路：blob 资产 -> items -> items_fts，缺一即产生孤儿资产或脏索引
+        batch.forEach((row) => this.blobStore.removeForItem({ dataPath: row.data_path }))
+        this.db.run(`DELETE FROM items WHERE id IN (${inSql})`, idParams)
+        if (this.ftsEnabled) {
+          this.db.run(`DELETE FROM items_fts WHERE id IN (${inSql})`, idParams)
+        }
+        return true
+      })
+      batch.forEach((row) => removedIds.push(row.id))
+      onProgress?.({ current: removedIds.length, total: targets.length })
+    }
+    this.refreshCache()
+    return { removed: removedIds.length, removedIds, skippedLocked, candidates: rows.length }
+  }
+
+  // 收藏页「清空」的语义是取消收藏而非删除，因此走 UPDATE collected = 0，
+  // 条目回落到历史列表。写成 DELETE 即为数据丢失级的行为变更。
+  removeCollectsByRange(options = {}) {
+    const { collectTag = '*全部*', since = null, force = false, batchSize = 200, onProgress = null } = options
+    const where = ['collected = 1']
+    const params = {}
+    if (collectTag && collectTag !== '*全部*') {
+      where.push('tags_json LIKE $tag')
+      params.$tag = `%"${String(collectTag).replaceAll('"', '""')}"%`
+    }
+    if (since != null) {
+      where.push(`${EFFECTIVE_COLLECT_TIME} >= $since`)
+      params.$since = Number(since) || 0
+    }
+    const rows = this.selectRangeRows(where.join(' AND '), params)
+    const skippedLocked = force ? 0 : rows.filter((row) => row.locked === 1).length
+    const targets = force ? rows : rows.filter((row) => row.locked !== 1)
+    const removedIds = []
+    for (let offset = 0; offset < targets.length; offset += batchSize) {
+      const batch = targets.slice(offset, offset + batchSize)
+      this.runInTransaction(() => {
+        const { params: idParams, placeholders } = this.makeIdParams(batch.map((row) => row.id))
+        this.db.run(
+          `UPDATE items SET collected = 0, update_time = $time WHERE id IN (${placeholders.join(',')})`,
+          { ...idParams, $time: Date.now() }
+        )
+        return true
+      })
+      batch.forEach((row) => removedIds.push(row.id))
+      onProgress?.({ current: removedIds.length, total: targets.length })
+    }
+    this.refreshCache()
+    return { removed: removedIds.length, removedIds, skippedLocked, candidates: rows.length }
   }
 
   setLock(id, locked) {

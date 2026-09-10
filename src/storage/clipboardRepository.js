@@ -190,6 +190,53 @@ export class ClipboardRepository {
     return { removed, skippedLocked, skippedCollected: 0, missing: 0 }
   }
 
+  // 与 SQLite 主路径同名同签名，保证 Main.vue 的清空链路在降级态行为一致。
+  // 该 facade 的 dataBase 是全量（非 30 条截断），因此可直接在 JS 侧筛选。
+  removeByRange(options = {}) {
+    const { tab = 'all', since = null, force = false, onProgress = null } = options
+    const effectiveTime = (item) => item.updateTime || item.collectTime || item.createTime || 0
+    let rows = asArray(this.dataBase?.data).filter((item) => !this.isCollected(item.id))
+    if (tab && !['all', 'collect'].includes(tab)) {
+      rows = rows.filter((item) => item.type === tab)
+    }
+    if (since != null) {
+      rows = rows.filter((item) => effectiveTime(item) >= since)
+    }
+    const skippedLocked = force ? 0 : rows.filter((item) => item.locked === true).length
+    const targets = force ? rows : rows.filter((item) => item.locked !== true)
+    const removedIds = targets.map((item) => item.id)
+    const result = this.removeItems(removedIds, { force })
+    onProgress?.({ current: removedIds.length, total: removedIds.length })
+    return {
+      removed: result?.removed || 0,
+      removedIds,
+      skippedLocked,
+      candidates: rows.length
+    }
+  }
+
+  removeCollectsByRange(options = {}) {
+    const { collectTag = '*全部*', since = null, force = false, onProgress = null } = options
+    const effectiveTime = (item) => item.collectTime || item.updateTime || item.createTime || 0
+    let rows = asArray(
+      collectTag && collectTag !== '*全部*' ? this.getCollectsByTag(collectTag) : this.getCollects()
+    )
+    if (since != null) {
+      rows = rows.filter((item) => effectiveTime(item) >= since)
+    }
+    const skippedLocked = force ? 0 : rows.filter((item) => item.locked === true).length
+    const targets = force ? rows : rows.filter((item) => item.locked !== true)
+    const removedIds = targets.map((item) => item.id)
+    const result = this.removeCollects(removedIds, false)
+    onProgress?.({ current: removedIds.length, total: removedIds.length })
+    return {
+      removed: result?.removed || 0,
+      removedIds,
+      skippedLocked,
+      candidates: rows.length
+    }
+  }
+
   setCollect(id, collected) {
     const result = collected
       ? this.legacyDb?.addCollect?.(id)

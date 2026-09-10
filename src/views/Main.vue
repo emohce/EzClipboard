@@ -1004,7 +1004,53 @@ const measureOperation = (name, operation) => {
     return result;
 };
 
+const getRangeCutoff = (rangeValue) => {
+    const duration = RANGE_DURATION_MAP[rangeValue];
+    return duration ? Date.now() - duration : null;
+};
+
+const applyRangeClearResult = (result) => {
+    const removedIds = result.removedIds || [];
+    if (removedIds.length) {
+        removeVisibleItemsByIds(removedIds);
+        scheduleDataRefresh();
+    }
+    clearProgress.value = {
+        current: removedIds.length,
+        total: result.candidates ?? removedIds.length,
+        percentage: 100,
+    };
+    return {
+        removed: result.removed || 0,
+        skippedLocked: result.skippedLocked || 0,
+    };
+};
+
+const makeClearProgressReporter = () => ({ current, total }) => {
+    clearProgress.value = {
+        current,
+        total,
+        percentage: total ? (current / total) * 100 : 100,
+    };
+};
+
 const clearRegularTabItems = async (tabType, rangeValue) => {
+    // 优先走仓库层的范围清理：旧路径的候选集来自 dataBase.data（受 30 条运行缓存截断），
+    // 选「全部」也只会删掉最近 30 条，却仍提示成功。
+    if (typeof window.db?.removeByRange === "function") {
+        clearProgress.value = { current: 0, total: 0, percentage: 0 };
+        return applyRangeClearResult(
+            measureOperation("clear-regular-items", () =>
+                window.db.removeByRange({
+                    tab: tabType,
+                    since: getRangeCutoff(rangeValue),
+                    force: false,
+                    onProgress: makeClearProgressReporter(),
+                }),
+            ),
+        );
+    }
+
     const candidates = filterItemsByRange(getItemsByTab(tabType), rangeValue);
     const removable = candidates.filter((item) => item.locked !== true);
     const skippedLocked = candidates.length - removable.length;
@@ -1041,6 +1087,21 @@ const clearRegularTabItems = async (tabType, rangeValue) => {
 
 const clearCollectTabItems = async (rangeValue, collectSubTab) => {
     const subTab = collectSubTab ?? getCollectSubTab();
+    // 收藏页语义是「取消收藏」而非删除，仓库层用 UPDATE collected = 0 实现
+    if (typeof window.db?.removeCollectsByRange === "function") {
+        clearProgress.value = { current: 0, total: 0, percentage: 0 };
+        return applyRangeClearResult(
+            measureOperation("clear-collect-items", () =>
+                window.db.removeCollectsByRange({
+                    collectTag: subTab,
+                    since: getRangeCutoff(rangeValue),
+                    force: false,
+                    onProgress: makeClearProgressReporter(),
+                }),
+            ),
+        );
+    }
+
     const baseItems =
         subTab === "*全部*"
             ? window.db.getCollects()

@@ -51,13 +51,39 @@ Date: 2026-09-09
 
 `ClipItemList.vue` in-file 死块：`externalPreviewWindow` / `escapePreviewText` / `openExternalPreview` / `focusUtoolsMainWindow` / `closeExternalPreview` 共 230 行。`openExternalPreview` 零调用，故 `externalPreviewWindow` 恒 null，`closeExternalPreview` 为纯 no-op，其两处调用点一并移除。
 
+## 一之二、P1-1 / P1-2 清空范围下沉（2026-09-09 续做）
+
+缺陷：`Main.vue` 两条清空链路的候选集都取自 30 条运行缓存
+（普通页 `window.db.dataBase.data`、收藏页 `getCollects()`），选「全部」也只删最近 30 条，
+却仍提示「已清除 N 条记录」为成功态。清 3000 条需重复约 100 次「开对话框→选范围→确认」。
+
+| 新增 | 位置 | 说明 |
+| --- | --- | --- |
+| `removeByRange({tab, since, force, batchSize, onProgress})` | `src/storage/sqliteClipboardRepository.js` | 库内按 Tab + 时间范围清理；豁免判定走 SQL 列（`collected = 0` / `locked = 0`），不使用 `isCollected` |
+| `removeCollectsByRange({collectTag, since, force, ...})` | 同上 | 收藏页语义是**取消收藏**，走 `UPDATE collected = 0`，**不是 DELETE** |
+| 同名同签名实现 | `src/storage/clipboardRepository.js` | JSON 回退路径行为对齐（该 facade 的 dataBase 本就是全量） |
+| `getRangeCutoff` / `applyRangeClearResult` / `makeClearProgressReporter` | `src/views/Main.vue` | 优先走仓库层，旧路径保留为降级回退 |
+
+关键设计点（对应报告 P1-1 的风险项）：
+
+- **返回真实 `removedIds`** 而非计数：`Main.vue` 要用它同步 `showList` / `collectBlockList` / `pinnedMap` / `pinGroup` 与快速粘贴缓存，只回计数会让可见列表与库脱节。
+- **分批提交**（默认 200/批）：单个大事务会阻塞 UI；`queuePersist` 有 120ms 去抖，多批仍只落盘一次。
+- **复用既有清理链路**：`blobStore.removeForItem` → `DELETE items` → `DELETE items_fts` → `refreshCache`，缺一即产生孤儿资产或脏索引。
+- **时间口径与 JS 严格对齐**：`EFFECTIVE_UPDATE_TIME` / `EFFECTIVE_COLLECT_TIME` 两个 SQL 表达式逐项对应 `filterItemsByRange` 的 `||` 回退链。
+
+新增 `test-clear-range.mjs`（100 条普通项含 10 条锁定 + 20 条收藏含 2 条锁定）覆盖：
+按类型+时间范围清理、清空「全部」突破 30 条上限（实测单次删除 60 条）、锁定项跳过并计数、
+收藏项不被普通页波及、收藏页清空后条目仍在库中且 `collected` 为 false、`force` 可越过锁定、
+`removedIds` 与实际删除一致。测试内以 `dataBase.data.length === 30` 作为前置断言，
+确保该用例确实落在「缓存截断」这一目标场景上。
+
 ## 二、验证证据
 
 ### 自动化
 
 | 项 | 结果 |
 | --- | --- |
-| 14 个测试脚本全量 | **14 / 14 通过** |
+| 15 个测试脚本全量 | **15 / 15 通过** |
 | `node_modules/.bin/vite build` | 通过，无告警击穿 |
 | 悬空引用扫描（21 个已删符号/文件名） | **0 处残留** |
 
