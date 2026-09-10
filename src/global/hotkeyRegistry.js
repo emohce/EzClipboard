@@ -36,6 +36,7 @@ const features = new Map();
 const commands = new Map();
 let bindings = [];
 let bindingsVersion = null;
+let commandAwareBindingsCache = [];
 const mainStateRef = { current: "normal" };
 let ignoreRepeat = true;
 
@@ -124,6 +125,9 @@ export function setBindings(list, version = null) {
     state: b.state,
     features: Array.isArray(b.features) ? b.features : [b.features].filter(Boolean),
   }));
+  // bindings 只在此处写入，因此 command-aware 视图可以在这里一次性构建。
+  // 修复前 dispatch 每次按键都重建全部绑定（长按方向键 = 每秒数千次对象分配）。
+  commandAwareBindingsCache = getCommandAwareBindings(bindings);
 }
 
 export function getBindings() {
@@ -398,7 +402,7 @@ export function dispatch(e) {
     mainState: state,
     target: e.target,
   });
-  const commandAwareBindings = getCommandAwareBindings(bindings);
+  const commandAwareBindings = commandAwareBindingsCache;
   let binding = null;
   for (const id of lookupIds.length ? lookupIds : [lookupId]) {
     binding = resolveKeybinding(commandAwareBindings, id, context, getLayerPriorityOrder(activeLayers));

@@ -55,8 +55,10 @@ window.addEventListener(STORAGE_STATUS_EVENT, handleBootstrapStorageStatus)
   isBootstrapping = false
   window.removeEventListener(STORAGE_STATUS_EVENT, handleBootstrapStorageStatus)
   ensureDevDbStub()
+  // 冷启动快速粘贴不依赖任何 DOM：在挂载 Vue 之前先 flush，
+  // 省掉一整轮首屏 JS/CSS 解析与渲染的等待。
+  flushPendingQuickPasteActions()
   const app = createApp(App)
   app.use(registerElement)
   app.mount('#app')
-  flushPendingQuickPasteActions()
 })()
