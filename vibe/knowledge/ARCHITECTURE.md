@@ -1,7 +1,8 @@
 # EzClipboard 系统架构详档
 
 > 版本: 2026-06-09 (性能重写版)  
-> 范围: 全量核心业务逻辑与代码结构
+> 范围: 全量核心业务逻辑与代码结构  
+> **2026-09-09 核验校正**：本文档部分内容已与代码脱节。已修正「搜索」「长列表」两行；第 3 章「虚拟列表渲染层」与 7.2 组件表仍描述了不存在的组件与 `useVirtualizer` 用法，待随巨石拆分一并重写。逐条差异见 [审计报告](../specs/260909/2133-full-code-audit/report.md)。
 
 ---
 
@@ -26,8 +27,8 @@
 | 框架 | Vue 3 + Vite | Composition API, 单文件组件 |
 | UI | Element Plus | 对话框、输入框、按钮等 |
 | 存储 | SQLite (sql.js) | WASM 版本，本地文件持久化 |
-| 搜索 | FTS5 全文索引 | 内置在 SQLite 中 |
-| 虚拟列表 | @tanstack/vue-virtual | 高性能长列表渲染 |
+| 搜索 | `search_text` 冗余列 + LIKE 子串匹配 | 代码保留 FTS5 分支，但打包的 sql.js wasm 未编译 FTS5，`ftsEnabled` 恒 false |
+| 长列表 | 游标分页 + 全量 `v-for` | **未实现窗口化虚拟滚动**；`@tanstack/vue-virtual` 在 src 下零引用，`virtualizer` 传入 null |
 | 运行环境 | uTools 插件 | 主进程 + 渲染进程架构 |
 
 ### 1.2 目录结构

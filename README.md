@@ -6,10 +6,13 @@
 - 多类型历史：文本/图片/文件自动入库，空文本过滤，按更新时间倒序。
 - 去重与写回：内容 MD5 去重；复制后写回剪贴板保持可粘贴状态（文本/图片）。
 - 收藏分离：收藏独立存储并保留收藏时间，可锁定避免误删。
-- 来源信息：尝试读取文件路径、前台窗口标题，便于追溯来源。
+- 来源信息：记录剪贴板文件路径（`sourcePaths`/`fromFileSource`），便于追溯来源。
+  > 前台窗口标题（`sourceApp`/`sourceWindowTitle`）依赖 `utools.shellExec`，真实宿主未提供该 API，实际恒为空且无 UI 消费；详见 vibe/specs/260909/2133-full-code-audit/report.md 的 A6。
 - 稳健监听：优先原生监听，失败自动降级 300ms 轮询。
-- 高性能存储：底层采用 SQLite + FTS5 全文索引，大数据量下依然流畅。
-- 虚拟列表：长列表使用虚拟滚动，条目再多也不卡顿。
+- 高性能存储：底层采用 SQLite 持久化，搜索走 `search_text` 冗余列的 LIKE 子串匹配。
+  > 代码保留了 FTS5 建表分支，但当前打包的 `sql.js` wasm 未编译 FTS5 模块（实测 `no such module: fts5`），`ftsEnabled` 恒为 false，始终走 LIKE 回退。切换到 fts4 前必须先解决中文分词（simple 分词下 `MATCH '好世'` 匹配不到 `你好世界`，会比现状退化）。
+- 分页加载：列表按游标分页拉取（初始一页、触底追加），已加载项由 `v-for` 全量渲染。
+  > 尚未实现窗口化虚拟滚动：`src/cpns/ClipItemList.vue:16` 对整个 `showList` 做 `v-for`，`useVirtualListScroll` 的 `virtualizer` 传入 `null`（`src/cpns/ClipItemList.vue:1547`），`@tanstack/vue-virtual` 在 `src/` 下无任何引用。
 - 多选合并：批量复制/粘贴，含图片/文件时自动走文件合并流程。
 - 操作区可配：主页功能可勾选、排序，支持自定义跳转功能。
 - 快捷键分层：主界面/搜索态/抽屉/清除对话框/全文预览/设置层屏蔽删键。
@@ -49,9 +52,10 @@
 
 ## 数据与配置
 - 存储结构：底层 SQLite 存储，含剪贴板历史、收藏、标签等；首次启动自动迁移旧 JSON 数据并备份，路径按设备 ID 区分 @src/global/initPlugin.js#53-190.
-- 清理策略：maxsize 控制最大条数（历史）；maxage 控制最长天数（收藏不受影响）；设置来源 `readSetting` @src/global/initPlugin.js#233-268 @src/global/initPlugin.js#160-178.
+- 清理策略：maxsize（最大条数）/ maxage（最长天数）配置项位于设置页，收藏不受影响；设置来源 `readSetting`。
+  > 当前仅在 JSON 回退路径生效（实现在 `src/global/initPlugin.js` 的 legacy `DB` 内）。SQLite 主路径尚未实现该清理，`src/storage/sqliteClipboardRepository.js` 中无 maxsize/maxage 逻辑；详见审计报告 A3 / P1-3。
 - 迁移与回退：首次启动自动检测旧 JSON 数据，备份后迁移至 SQLite；保留 JSON 回退机制 @src/storage/jsonMigration.js.
-- 来源信息：解析剪贴板文件路径/前台窗口标题存入 item.sourcePaths/sourceApp/sourceWindowTitle @src/global/initPlugin.js#488-635.
+- 来源信息：解析剪贴板文件路径存入 `item.sourcePaths` / `fromFileSource` / `hasSourceInfo`；`sourceApp` / `sourceWindowTitle` 两列保留但当前恒为空（见「核心特性」注）。
 - 文件处理：文件/图片保留 originPaths，列表支持图片预览和原始路径展示 @src/global/initPlugin.js#144-159 @src/cpns/ClipItemList.vue#47-101.
 - 自定义功能：类型/正则匹配 + redirect 命令，设置页维护，默认示例见 `setting.json` @src/data/setting.json#12-78.
 
@@ -85,6 +89,6 @@
 
 ## 测试建议
 - 正常：文本/图片/文件入库与去重；收藏/取消收藏；锁定与强制删除；多选合并粘贴；快捷键导航。
-- 边界：空文本不入库；大图预览；maxsize/maxage 生效；快捷键覆盖。
+- 边界：空文本不入库；大图预览；maxsize/maxage（当前仅 JSON 回退路径）；快捷键覆盖。
 - 安全：文件原路径展示正确，锁定项不被常规删除。
 - 回归：监听降级后仍能入库；自定义功能匹配与排序。
