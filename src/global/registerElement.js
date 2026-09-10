@@ -18,6 +18,9 @@ import 'element-plus/theme-chalk/el-dialog.css'
 import 'element-plus/theme-chalk/el-form.css'
 import 'element-plus/theme-chalk/el-form-item.css'
 import 'element-plus/theme-chalk/el-pagination.css'
+import 'element-plus/theme-chalk/el-radio.css'
+import 'element-plus/theme-chalk/el-radio-group.css'
+import 'element-plus/theme-chalk/el-radio-button.css'
 import {
   ElButton,
   ElMessageBox,
@@ -35,7 +38,9 @@ import {
   ElDialog,
   ElForm,
   ElFormItem,
-  ElPagination
+  ElPagination,
+  ElRadioGroup,
+  ElRadioButton
 } from 'element-plus'
 
 const components = [
@@ -55,7 +60,9 @@ const components = [
   ElDialog,
   ElForm,
   ElFormItem,
-  ElPagination
+  ElPagination,
+  ElRadioGroup,
+  ElRadioButton
 ]
 
 export default function registerElement(app) {

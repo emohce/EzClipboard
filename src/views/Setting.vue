@@ -964,8 +964,8 @@
             <div class="shortcut-sync-row">
               <span class="shortcut-sync-label">当前使用</span>
               <el-radio-group v-model="shortcutRuntimeSourceDraft">
-                <el-radio-button :label="SHORTCUT_RUNTIME_SOURCE_LOCAL">本机配置</el-radio-button>
-                <el-radio-button :label="SHORTCUT_RUNTIME_SOURCE_PUBLIC">公共配置</el-radio-button>
+                <el-radio-button :value="SHORTCUT_RUNTIME_SOURCE_LOCAL">本机配置</el-radio-button>
+                <el-radio-button :value="SHORTCUT_RUNTIME_SOURCE_PUBLIC">公共配置</el-radio-button>
               </el-radio-group>
               <el-button type="primary" plain @click="applyShortcutRuntimeSource">应用</el-button>
             </div>
@@ -1514,6 +1514,7 @@ function isSettingOverlayOpen() {
     commandMacroDraftDialogVisible.value ||
     commandMacroDialogVisible.value ||
     contextMenuDialogVisible.value ||
+    shortcutSyncDialogVisible.value ||
     isSettingMessageBoxOpen()
   )
 }
@@ -1977,20 +1978,6 @@ function getRecordShortcutContext() {
   }
 }
 
-function getRecordShortcutConflicts(shortcutId) {
-  const row = shortcutRecordRow.value
-  if (!row || !shortcutId) return []
-  const existingIds = dedupeShortcutIds([
-    ...shortcutRecordActiveIds.value,
-    ...shortcutRecordPendingIds.value
-  ])
-  return getShortcutCommandRowConflicts(
-    { ...row, shortcutIds: existingIds },
-    shortcutConflictRows.value,
-    { shortcutId }
-  )
-}
-
 function getShortcutConflictRowsWithWhen(row, nextShortcutId, nextWhen) {
   return getShortcutCommandRowConflicts(row, shortcutConflictRows.value, {
     shortcutId: nextShortcutId,
@@ -2100,6 +2087,10 @@ function closeTopSettingOverlay() {
   }
   if (contextMenuDialogVisible.value) {
     contextMenuDialogVisible.value = false
+    return true
+  }
+  if (shortcutSyncDialogVisible.value) {
+    shortcutSyncDialogVisible.value = false
     return true
   }
   return false
@@ -2904,8 +2895,7 @@ const handleSaveBtnClick = () => {
     operation: {
       shown: shown.value,
       custom: custom.value,
-      order: featureOrder.value,
-      drawerOrder: contextMenuDrawerOrder.value
+      order: featureOrder.value
     },
       hotkeyOverrides: hotkeyOverrides.value,
       userConfig: {
