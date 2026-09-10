@@ -135,11 +135,9 @@ async function main() {
     assert.equal(repo.updateItem('big-1', { data: 'small now' }), true)
     const shrunk = repo.selectRangeRows("id = 'big-1'", {})[0]
     assert.equal(repo.getById('big-1').data, 'small now', '慢路径改写后必须读回新内容')
-    // 已知既有行为（非本次引入）：内容由外置缩回内联时，data_path 不会被清空。
-    // 根因是 itemToParams 的 `prepared.dataPath || dbItem.dataPath` 回退把旧路径捡了回来
-    // （prepareForDb 本身已正确返回空串）。读取不受影响——hydrateItem 在 data 非空时短路——
-    // 但会遗留孤儿 blob 文件。此处固定住现状，待单独立项修复后再改断言。
-    assert.notEqual(shrunk.data_path, '', '当前实现会保留旧 data_path（已知遗留问题）')
+    // 由外置缩回内联：data_path 必须清空，旧 blob 文件必须被释放（否则遗留孤儿文件）
+    assert.equal(shrunk.data_path, '', '缩回内联后 data_path 必须清空')
+    assert.equal(fs.existsSync(beforeRow.data_path), false, '旧 blob 文件必须已被删除')
 
     // 快路径对不存在的 id 必须返回 false（保持原契约）
     assert.equal(repo.updateItem('missing-id', { updateTime: now }), false, '不存在的 id 应返回 false')
@@ -149,6 +147,29 @@ async function main() {
     repo.addCollect('col-fast')
     repo.updateItem('col-fast', { updateTime: now + 5000 })
     assert.equal(repo.getById('col-fast').collected, true, '快路径不得取消收藏')
+
+    // ---------- C. 未 hydrate 的外置行写回保护 ----------
+    // hydrateItem 在 blob 缺失/读取失败时返回 data='' + dataPath 原样。
+    // 此时写回既不能清空指针（内容永久丢失），也不能按空内容重写 blob（覆盖掉好文件）。
+    const bigText2 = 'Y'.repeat(32 * 1024)
+    repo.addItem({ id: 'big-2', type: 'text', data: bigText2, createTime: now, updateTime: now })
+    const row2 = repo.selectRangeRows("id = 'big-2'", {})[0]
+    assert.ok(row2.data_path, '前置：应已外置')
+
+    // 直接用未 hydrate 的形态写回（模拟 blob 读不到时的 getById 返回值）
+    repo.upsertItemRaw({ ...repo.getById('big-2'), data: '', dataPath: row2.data_path, tags: ['t1'] }, false)
+    const row2After = repo.selectRangeRows("id = 'big-2'", {})[0]
+    assert.equal(row2After.data_path, row2.data_path, '未 hydrate 行写回后指针必须保留')
+    assert.equal(fs.readFileSync(row2.data_path, 'utf8'), bigText2, 'blob 文件内容不得被空内容覆盖')
+    assert.equal(repo.getById('big-2').data, bigText2, '内容必须仍可读回')
+
+    // 图片同理：type=image 恒外置，未 hydrate 时不得用空内容重写
+    const imgData = 'data:image/png;base64,' + 'Z'.repeat(4096)
+    repo.addItem({ id: 'img-1', type: 'image', data: imgData, createTime: now, updateTime: now })
+    const imgRow = repo.selectRangeRows("id = 'img-1'", {})[0]
+    assert.ok(imgRow.data_path, '前置：图片应已外置')
+    repo.upsertItemRaw({ id: 'img-1', type: 'image', data: '', dataPath: imgRow.data_path }, false)
+    assert.equal(fs.readFileSync(imgRow.data_path, 'utf8'), imgData, '图片 blob 不得被空内容覆盖')
 
     console.log('retention & fast-update tests passed')
   } finally {

@@ -113,13 +113,53 @@ SQLite 主路径完全没有实现，设置页配了不生效。
 - 用 `getRowsModified()` 保持「不存在的 id 返回 false」的原契约。
 - 含 `data` 的 patch 一律走原慢路径，避免 `data` 与 `data_path` 不一致。
 
+## 一之四、孤儿 blob 与 legacy JSON 惰性化（2026-09-09 续做）
+
+### 外置 payload 缩回内联时遗留孤儿 blob（上一轮发现，本轮修复）
+
+根因：`itemToParams` 的 `$data_path: prepared.dataPath || dbItem.dataPath || ''` 回退把旧路径捡了回来
+（`prepareForDb` 本身已正确返回空串）。结果是内容改小后 `data` 转为内联，`data_path` 却仍指向旧文件，
+该文件永不被清理。
+
+但**直接删掉该回退是危险的**：`hydrateItem` 在 blob 文件缺失或读取失败时，返回的正是
+`data === '' 且 dataPath 有值` 的形态。清空指针会让内容永久丢失；而 `type === 'image'` 恒外置，
+按空内容重写还会**覆盖掉本来完好的 blob 文件**。
+
+因此改为在 `blobStore.prepareForDb` 内显式区分三种形态：
+
+| 形态 | 处理 |
+| --- | --- |
+| 未 hydrate 的外置行（`data` 空 + `dataPath` 有值） | 原样透传：不写文件、不清指针 |
+| 由外置缩回内联 | `dataPath` 置空，并通过 `releasedPath` 交由 `upsertItemRaw` 在**写库成功后**删除旧 blob |
+| 仍需外置 | 写入新路径；若路径变化，旧路径同样经 `releasedPath` 释放 |
+
+`itemToParams` 改为返回 `{ params, releasedPath }`，`$data_path` 直接取 `prepared.dataPath`。
+
+### P1-5 legacy JSON 惰性化
+
+修复前 `initPlugin` 每次冷启动都无条件 `new DB(dbPath); legacyDb.init()`，即使早已迁移到 SQLite，
+白付一次整份旧 JSON 的 `readFileSync` + `parse`、O(n·m) 收藏清理、逐张缩略图解码、
+一份全量备份复制，以及一个常驻 `fs.watch`。
+
+仓库层对 `legacyDb` 的 4 处使用中有 3 处只需路径字符串，故：
+
+- 构造参数新增 `legacyJsonPath` 与 `createLegacyDb` 工厂（仍兼容直接传实例）
+- `getJsonSourceFingerprint` / `markJsonMigrationComplete` 改用路径，不触发构建
+- 仅 `migrateFromLegacyJson` 通过 `ensureLegacyDb()` 按需构建
+- `initPlugin` 改为惰性工厂；**降级到 JSON facade 的分支显式调用 `createLegacyDb()`**
+  （报告点名的风险：漏改会让 SQLite 三次重试全失败后主界面拿不到数据源）
+- 删除死变量 `jsonDbExists` 与「使用 JSON 文件」的误导日志
+
+新增 `test-legacy-json-lazy.mjs` 覆盖三种启动形态：全新安装、首次迁移（各构建 1 次）、
+**已迁移的稳态启动（必须为 0 次）**，并校验直接传实例的旧用法仍可用。
+
 ## 二、验证证据
 
 ### 自动化
 
 | 项 | 结果 |
 | --- | --- |
-| 16 个测试脚本全量 | **16 / 16 通过** |
+| 17 个测试脚本全量 | **17 / 17 通过** |
 | `node_modules/.bin/vite build` | 通过，无告警击穿 |
 | 悬空引用扫描（21 个已删符号/文件名） | **0 处残留** |
 
@@ -162,12 +202,7 @@ CSS 去重的安全性以**选择器集合与声明集合逐一比对**验证（
 1. **Esc 修复未取得运行时验证**。dev 环境的启动 MessageBox「重要版本更新提示」无法关闭（dev stub 用内存存储，每次 reload 重现），而 `Setting.vue` 的 `isSettingMessageBoxOpen()` 守卫在设计上让 Esc 成为 no-op，该分支在 dev 里无法被触达。代码层面可确认：修复前 `closeTopSettingOverlay()` 无该对话框分支 → 返回 false → 走 `emit('back')` 退出整页；修复后新分支返回 true 并 `stopPropagation`。**属代码推理，非实测。**
 2. **全部 uTools 实机复测未执行**：收藏超 30 条后的星标与删除保护、明暗两套主题的视觉回归、冷启动 quick-paste（macOS/Windows 两条路径）、抽屉排序改由设置页管理后的实际手感。
 3. **审计本身的完整性批判未跑完**（会话额度中断）。以下维度未系统扫描，不能视为无问题：错误处理与异常恢复、并发/竞态、安全（DOMPurify 使用、`file://` 路径、SQL 拼接）、可访问性、国际化、Windows/Linux 差异、内存泄漏。
-4. **新发现的遗留问题（本次未修）**：内容由外置缩回内联时 `data_path` 不会被清空，
-   根因是 `itemToParams` 的 `prepared.dataPath || dbItem.dataPath` 回退把旧路径捡了回来
-   （`prepareForDb` 本身已正确返回空串）。读取不受影响——`hydrateItem` 在 `data` 非空时短路——
-   但会遗留孤儿 blob 文件。属既有缺陷，与本次改动无关（慢路径未改动），
-   已在 `test-retention-and-fastupdate.mjs` 中以断言固定现状，待单独立项修复。
-5. **其余 P1/P2 未动**，按 [report.md](report.md) 路线图执行。
+4. **其余 P1/P2 未动**，按 [report.md](report.md) 路线图执行。
 
 ## 四、并发提示
 

@@ -1189,7 +1189,6 @@ export default async function initPlugin() {
   const dbPath = setting.database.path[nativeId] || setting.database.path
   console.log('[initPlugin] 数据库路径:', dbPath)
   
-  const jsonDbExists = window.exports.existsSync(dbPath)
   const sqlitePath = dbPath.endsWith('.sqlite') ? dbPath : `${dbPath}.sqlite`
   const assetDir = `${sqlitePath}.assets`
   updateStorageRuntimeStatus({
@@ -1203,11 +1202,17 @@ export default async function initPlugin() {
     assetDir,
     errorMessage: ''
   })
-  console.log('[initPlugin] 存储检查: (JSON文件存在:', jsonDbExists, ')')
-
-  console.log('[initPlugin] 使用 JSON 文件')
-  const legacyDb = new DB(dbPath)
-  legacyDb.init()
+  // 惰性构建：旧 JSON 只在真正需要迁移或降级到 JSON facade 时才加载。
+  // 原实现每次冷启动无条件 new DB(dbPath) + init()，即使早已迁移到 SQLite。
+  let legacyDbInstance = null
+  const createLegacyDb = () => {
+    if (!legacyDbInstance) {
+      console.log('[initPlugin] 按需加载旧 JSON 存储:', dbPath)
+      legacyDbInstance = new DB(dbPath)
+      legacyDbInstance.init()
+    }
+    return legacyDbInstance
+  }
   let db
   const bindStorageRuntime = (nextDb) => {
     db = nextDb
@@ -1240,7 +1245,8 @@ export default async function initPlugin() {
         })
         const nextDb = await createSQLiteClipboardRepository({
           dbPath,
-          legacyDb,
+          legacyJsonPath: dbPath,
+          createLegacyDb,
           onProgress: ({ progress, stepText }) => {
             if (String(stepText || '').includes('导入旧 JSON')) importedLegacy = true
             updateStorageRuntimeStatus({
@@ -1291,7 +1297,8 @@ export default async function initPlugin() {
     console.log('[initPlugin] SQLite 存储初始化完成')
   } catch (err) {
     console.warn('[initPlugin] SQLite 初始化重试失败，回退 JSON facade:', err)
-    db = createClipboardRepository(legacyDb)
+    // 降级到 JSON facade：此处必须实际构建 legacyDb，否则三次重试全失败后主界面拿不到数据源
+    db = createClipboardRepository(createLegacyDb())
     db.init()
     utools.dbStorage.setItem('storageMode', 'json-fallback')
     updateStorageRuntimeStatus({

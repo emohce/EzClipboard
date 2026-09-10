@@ -75,19 +75,24 @@ const rowToItem = (row) => ({
   dataPath: row.data_path || ''
 })
 
+// 返回 { params, releasedPath }：releasedPath 是本次写入后应删除的旧 blob。
+// 注意 $data_path 直接取 prepared.dataPath，不再回退到 dbItem.dataPath ——
+// 那个回退会在「内容由外置缩回内联」时把旧路径捡回来，留下孤儿文件与失真指针。
+// 未 hydrate 行的指针保全已由 blobStore.prepareForDb 显式处理。
 const itemToParams = (item, collected = false, blobStore = null) => {
   const ts = now()
   const prepared = blobStore?.prepareForDb(item) || {
     dbItem: item,
     dataPath: item.dataPath || '',
-    dataInline: item.data || ''
+    dataInline: item.data || '',
+    releasedPath: ''
   }
   const dbItem = prepared.dbItem
-  return {
+  const params = {
     $id: dbItem.id,
     $type: dbItem.type || 'text',
     $data: prepared.dataInline || dbItem.data || '',
-    $data_path: prepared.dataPath || dbItem.dataPath || '',
+    $data_path: prepared.dataPath || '',
     $locked: dbItem.locked === true ? 1 : 0,
     $collected: collected ? 1 : 0,
     $create_time: dbItem.createTime || ts,
@@ -105,12 +110,19 @@ const itemToParams = (item, collected = false, blobStore = null) => {
     $source_window_title: dbItem.sourceWindowTitle || '',
     $search_text: buildSearchIndex(item, getAliasMap())
   }
+  return { params, releasedPath: prepared.releasedPath || '' }
 }
 
 export class SQLiteClipboardRepository {
-  constructor({ dbPath, legacyDb, deps = window.exports }) {
+  constructor({ dbPath, legacyDb, legacyJsonPath, createLegacyDb, deps = window.exports }) {
     this.dbPath = dbPath.endsWith('.sqlite') ? dbPath : `${dbPath}.sqlite`
-    this.legacyDb = legacyDb
+    // legacyDb 只有真正执行 JSON 迁移时才需要。已迁移的稳态启动完全不碰它，
+    // 因此改为惰性工厂：省掉整份旧 JSON 的 readFileSync + parse、O(n·m) 收藏清理、
+    // 逐张缩略图解码、每次冷启动一份全量备份复制，以及一个常驻的 fs.watch。
+    // 仍兼容直接传入实例的用法（测试与旧调用方）。
+    this.legacyDb = legacyDb || null
+    this.createLegacyDb = typeof createLegacyDb === 'function' ? createLegacyDb : null
+    this.legacyJsonPath = legacyJsonPath || legacyDb?.path || ''
     this.deps = deps
     this.db = null
     this.blobStore = new BlobStore({
@@ -138,8 +150,16 @@ export class SQLiteClipboardRepository {
     }
   }
 
+  ensureLegacyDb() {
+    if (this.legacyDb) return this.legacyDb
+    if (!this.createLegacyDb) return null
+    this.legacyDb = this.createLegacyDb()
+    return this.legacyDb
+  }
+
   getJsonSourceFingerprint() {
-    const path = this.legacyDb?.path || ''
+    // 只需路径字符串，不触发 legacyDb 的构建
+    const path = this.legacyJsonPath || this.legacyDb?.path || ''
     if (!path) return ''
     try {
       if (!this.deps.existsSync(path)) return `missing:${path}`
@@ -320,7 +340,7 @@ export class SQLiteClipboardRepository {
       history.push(fingerprint)
     }
     this.setMeta(META_JSON_MIGRATION_COMPLETE, '1')
-    this.setMeta(META_JSON_MIGRATION_SOURCE, this.legacyDb?.path || '')
+    this.setMeta(META_JSON_MIGRATION_SOURCE, this.legacyJsonPath || this.legacyDb?.path || '')
     this.setMeta(META_JSON_MIGRATION_FINGERPRINT, fingerprint)
     this.setMeta(META_JSON_MIGRATION_HISTORY, JSON.stringify(history))
   }
@@ -402,8 +422,10 @@ export class SQLiteClipboardRepository {
   }
 
   migrateFromLegacyJson() {
-    const data = asArray(this.legacyDb?.dataBase?.data)
-    const collects = asArray(this.legacyDb?.dataBase?.collectData)
+    // 唯一真正需要旧 JSON 内容的地方，在此按需构建
+    const legacy = this.ensureLegacyDb()
+    const data = asArray(legacy?.dataBase?.data)
+    const collects = asArray(legacy?.dataBase?.collectData)
     this.db.run('BEGIN IMMEDIATE')
     try {
       data.forEach((item) => this.upsertItemRaw(item, false))
@@ -419,7 +441,7 @@ export class SQLiteClipboardRepository {
 
   upsertItemRaw(item, collected = false) {
     if (!item?.id) return false
-    const params = itemToParams(item, collected, this.blobStore)
+    const { params, releasedPath } = itemToParams(item, collected, this.blobStore)
     this.db.run(
       `INSERT INTO items (
         id, type, data, data_path, locked, collected, create_time, update_time, collect_time,
@@ -453,6 +475,8 @@ export class SQLiteClipboardRepository {
       params
     )
     this.upsertFts(params.$id, params.$search_text)
+    // 写库成功后再释放旧 blob，避免写失败时内容已被删除
+    if (releasedPath) this.blobStore.releasePath(releasedPath)
     return true
   }
 
