@@ -8,6 +8,6 @@ alwaysApply: true
 <!-- codenote-agent-ecosystem:start -->
 # ez-clipboard shared project entry
 
-Load [../../AGENTS.md](../../AGENTS.md) once; it selects the local or portable core and the project owner. No independent reply, title or preflight protocol lives here.
-<!-- projection-sha256: 6d1740fb989e8ef6a61fcecbab6b0a87e826c2e744ede533918a3815bd2235f2 -->
+Load [../../AGENTS.md](../../AGENTS.md) once; it routes to the CodeNote canonical core and the project owner. No independent reply, title or preflight protocol lives here.
+<!-- projection-sha256: aae0f9a2329219f99ffcca697927976b38b9dea098efe609913d58fbdfa6b82c -->
 <!-- codenote-agent-ecosystem:end -->
