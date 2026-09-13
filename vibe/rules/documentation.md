@@ -4,6 +4,8 @@ Tool: codex
 
 ## Purpose
 
+Consolidation follows [Single Authority And Current Entry](../../../CzzProj/CodeNote/AiRef/VibePractice/Vibe_Rules/process/documentation-impact.md#single-authority-and-current-entry). This adapter keeps only local paths and constraints.
+
 Define EzClipboard-specific documentation routing. Cross-project principles stay in the CodeNote master rules; this file only maps those principles onto this repository.
 
 ## Documentation Layers
