@@ -1,5 +1,7 @@
 # Project Status Hub
 
+- 2026-10-13 采集审查补修：保护期补采与长驻流式监听已实现，聚焦回归及构建核验通过，真实 uTools 重接入与 CPU 验收待办；[范围与验证](261013/1505-clipboard-listener-fix/task-card.md)。
+
 Tool: codex
 
 ## Purpose

@@ -1347,6 +1347,7 @@ export default async function initPlugin() {
 
   // 防止剪贴板写回循环的标志
   let isRestoringClipboard = false
+  let pendingClipboardChange = false
   let lastRestoredItemId = null
   let lastRestoredItemHash = null
   let restoreCount = 0
@@ -1391,11 +1392,24 @@ export default async function initPlugin() {
       // 延迟重置标志，防止竞态条件
       setTimeout(() => {
         isRestoringClipboard = false
-        lastRestoredItemId = null
-        lastRestoredItemHash = null
         // 只有在没有连续恢复时才重置计数
         if (restoreCount < MAX_RESTORE_COUNT) {
           restoreCount = 0
+        }
+        // Native sequence events do not repeat. Re-read once after the guard,
+        // while the restored identity still suppresses our own writeback event.
+        if (pendingClipboardChange) {
+          pendingClipboardChange = false
+          try {
+            handleClipboardChange()
+          } catch (error) {
+            console.warn('[clipboard] deferred capture failed', error)
+          }
+        }
+        // Capturing a newer item may have started another restore guard.
+        if (!isRestoringClipboard) {
+          lastRestoredItemId = null
+          lastRestoredItemHash = null
         }
       }, RESTORE_GUARD_TIMEOUT)
     }
@@ -1477,6 +1491,8 @@ export default async function initPlugin() {
     function loop() {
       loopCount++
       time.sleep(300).then(loop)
+      // Do not advance prev for a copy the restore guard would reject.
+      if (isRestoringClipboard) return
       const item = pbpaste()
       if (!item) {
         return
@@ -1521,6 +1537,7 @@ export default async function initPlugin() {
       .on('change', () => {
         // 防止循环：如果正在恢复剪贴板，跳过处理
         if (isRestoringClipboard) {
+          pendingClipboardChange = true
           return
         }
         handleClipboardChange()

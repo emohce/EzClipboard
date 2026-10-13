@@ -1,5 +1,6 @@
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { buildMacClipboardListener } from './build-mac-clipboard-listener.mjs'
 
 const pluginManifest = {
   pluginName: '超级剪贴板',
@@ -212,10 +213,11 @@ window.exports = {
   Buffer
 }
 `,
-  'listener.js': `const { chmodSync, existsSync } = require('fs')
+  'listener.js': `const { chmodSync, existsSync, copyFileSync, mkdtempSync, rmSync } = require('fs')
 const { EventEmitter } = require('events')
 const path = require('path')
-const { execFile } = require('child_process')
+const { tmpdir } = require('os')
+const { spawn } = require('child_process')
 
 class ClipboardEventListener extends EventEmitter {
   constructor() {
@@ -233,7 +235,9 @@ class ClipboardEventListener extends EventEmitter {
     }
     const { platform } = process
     console.log('[listener.startListening] 平台:', platform)
-    const target = path.resolve(
+    const bundledMacTarget = path.join(__dirname, 'native', 'clipboard-event-handler-mac')
+    const useBundledMac = platform === 'darwin' && existsSync(bundledMacTarget)
+    const target = useBundledMac ? bundledMacTarget : path.resolve(
       dbPath.split('_utools_clipboard_manager_storage')[0],
       targetMap[platform]
     )
@@ -244,22 +248,45 @@ class ClipboardEventListener extends EventEmitter {
       return
     }
     console.log('[listener.startListening] 监听程序文件存在, 准备启动')
+    let extractedDirectory = null
+    const cleanupExecutable = () => {
+      if (!extractedDirectory) return
+      try {
+        rmSync(extractedDirectory, { recursive: true, force: true })
+        extractedDirectory = null
+      } catch (error) {
+        console.error('[listener] 临时程序清理失败:', error.code)
+      }
+    }
     try {
-      if (platform === 'win32') {
-        console.log('[listener.startListening] Windows平台, 启动exe')
-        this.child = execFile(target)
+      let executable = target
+      // spawn streams indefinitely, but Electron cannot spawn an ASAR member.
+      // Copy only our bundled helper into a private temporary directory first.
+      if (useBundledMac && target.includes('.asar' + path.sep)) {
+        extractedDirectory = mkdtempSync(path.join(tmpdir(), 'ezclipboard-listener-'))
+        executable = path.join(extractedDirectory, targetMap.darwin)
+        copyFileSync(target, executable)
+        chmodSync(executable, 0o755)
       } else if (platform === 'linux' || platform === 'darwin') {
-        console.log('[listener.startListening] Linux/macOS平台, 设置权限并启动')
-        chmodSync(target, 0o755)
-        this.child = execFile(target)
-      } else {
+        if (!useBundledMac) chmodSync(executable, 0o755)
+      } else if (platform !== 'win32') {
         throw 'Not yet supported'
       }
+      this.child = spawn(executable, [], { stdio: ['ignore', 'pipe', 'pipe'] })
+      this.child.on('close', cleanupExecutable)
       console.log('[listener.startListening] 子进程已启动, PID:', this.child.pid)
 
+      let pendingOutput = ''
       this.child.stdout.on('data', (data) => {
-        const dataStr = data.toString().trim()
-        if (dataStr === 'CLIPBOARD_CHANGE') {
+        pendingOutput += data.toString()
+        const lines = pendingOutput.split('\\n')
+        pendingOutput = lines.pop()
+        for (const line of lines) {
+          if (line.trim() === 'CLIPBOARD_CHANGE') this.emit('change')
+        }
+        // Preserve legacy helpers that send exactly one token without a newline.
+        if (pendingOutput.trim() === 'CLIPBOARD_CHANGE') {
+          pendingOutput = ''
           this.emit('change')
         }
       })
@@ -270,28 +297,29 @@ class ClipboardEventListener extends EventEmitter {
 
       this.child.stdout.on('close', () => {
         console.log('[listener.stdout] 子进程stdout关闭')
-        this.emit('close')
         this.listening = false
+        this.emit('close')
       })
 
       this.child.on('exit', (code, signal) => {
         console.log('[listener] 子进程退出, code:', code, 'signal:', signal)
-        this.emit('exit')
         this.listening = false
+        this.emit('exit')
       })
 
       this.child.on('error', (error) => {
         console.error('[listener] 子进程错误:', error)
-        this.emit('error', error)
         this.listening = false
+        this.emit('error', error)
       })
 
       this.listening = true
       console.log('[listener.startListening] 监听器启动成功, listening:', this.listening)
     } catch (error) {
+      cleanupExecutable()
       console.error('[listener.startListening] 启动失败:', error)
-      this.emit('error', error)
       this.listening = false
+      this.emit('error', error)
     }
   }
 
@@ -330,4 +358,5 @@ export function prepareUToolsRuntimeAssets(rootDir = process.cwd()) {
     writeFileSync(path.resolve(distDir, name), content, 'utf8')
   })
   copyFileSync(logoSource, path.resolve(distDir, 'logo.png'))
+  buildMacClipboardListener(rootDir, distDir)
 }
