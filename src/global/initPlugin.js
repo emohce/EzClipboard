@@ -14,6 +14,7 @@ import { copy, paste, createFile, getNativeId, cleanupAliasStateForDeletedItem, 
 import setting, { SETTING_UPDATED_EVENT } from './readSetting'
 import { initWindowManager, setPluginWindowSize } from './windowManager'
 import { generateThumbnail, shouldGenerateThumbnail } from './imageUtils'
+import { getGifFirstFrameSrc, isGifDataUrl, readClipboardGif, readGifFile } from '../utils/gifPreview.mjs'
 import { createClipboardRepository } from '../storage/clipboardRepository'
 import { JSON_DB_SCHEMA_VERSION, shouldMigrateJsonDb } from '../storage/jsonMigration'
 import { createSQLiteClipboardRepository } from '../storage/sqliteClipboardRepository'
@@ -391,7 +392,7 @@ export default async function initPlugin() {
       this.updateDataBase()
       
       // 异步为图片生成缩略图
-      if (cItem.type === 'image' && shouldGenerateThumbnail(cItem.data)) {
+      if (cItem.type === 'image' && !cItem.thumbnail && shouldGenerateThumbnail(cItem.data)) {
         const addedItem = this.dataBase.data[0]
         generateThumbnail(cItem.data)
           .then(thumbnail => {
@@ -1127,9 +1128,11 @@ export default async function initPlugin() {
       if (!allFromPluginTemp) {
         const originPaths = files.map((f) => f.path).filter(Boolean)
         const hasSourceInfo = originPaths.length > 0
+        const gif = readGifFile(files, window.exports)
         const result = {
-          type: 'file',
-          data: JSON.stringify(files),
+          type: gif ? 'image' : 'file',
+          data: gif || JSON.stringify(files),
+          ...(gif ? { thumbnail: getGifFirstFrameSrc(gif) } : {}),
           originPaths,
           sourcePaths: originPaths,
           fromFileSource: hasSourceInfo,
@@ -1142,6 +1145,15 @@ export default async function initPlugin() {
     }
     const sourcePaths = readClipboardSourcePaths()
     const hasSourceInfo = sourcePaths.length > 0
+    // Preserve encoded GIF frames before text/nativeImage can flatten them.
+    const gif = readClipboardGif(clipboard)
+    if (gif) {
+      return {
+        type: 'image', data: gif, thumbnail: getGifFirstFrameSrc(gif),
+        fromFileSource: hasSourceInfo, hasSourceInfo,
+        ...(hasSourceInfo ? { sourcePaths } : {})
+      }
+    }
     // text
     const text = clipboard.readText()
     console.log('[pbpaste] 检查文本:', text ? `长度 ${text.length}` : '无文本')
@@ -1358,6 +1370,8 @@ export default async function initPlugin() {
   /** 将刚入库的内容写回剪贴板，避免常驻时复制后剪贴板被清空、无法在其他应用粘贴 */
   const restoreClipboard = (item) => {
     if (!item || !item.type) return
+    // The original GIF/file is already on the clipboard; nativeImage writes lose animation.
+    if (item.type === 'image' && isGifDataUrl(item.data)) return
     if (isRestoringClipboard) {
       console.log('[restoreClipboard] 正在恢复中，跳过防止循环')
       return

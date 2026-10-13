@@ -1,3 +1,4 @@
+import { getClipboardDisplayType } from "../utils/imagePresentation.mjs"
 const pushUniqueItem = (result, seen, item) => {
   if (!item?.id || seen.has(item.id)) return
   seen.add(item.id)
@@ -130,4 +131,14 @@ export function resolvePinGroupItemsById(itemIds = [], options = {}) {
     .filter((id) => id !== '__ez_pin_group__')
     .map((id) => resolveItemById(id, byId, getItemById))
     .filter((item) => item?.id && !item.__pinGroup)
+}
+
+export function matchSearchableItemType(item, keyword = '', tab = 'all', matchBodyKeyword) {
+  if (!item) return false
+  if (tab === 'text') return item.type === 'text'
+  if (tab === 'image') return getClipboardDisplayType(item) === 'image'
+  if (tab === 'file') return getClipboardDisplayType(item) === 'file'
+  if (tab === 'collect') return true
+  if (keyword && item.type === 'image') return matchBodyKeyword(item, keyword)
+  return keyword ? item.type !== 'image' : true
 }

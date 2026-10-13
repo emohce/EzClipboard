@@ -4,6 +4,7 @@ import { buildSearchIndex } from './searchIndex.js'
 import { BlobStore } from './blobStore.js'
 import { ShortcutKeybindingRepository } from './shortcutKeybindingRepository.js'
 import { CommandMacroRepository } from './commandMacroRepository.js'
+import { getImageFileGroup } from '../utils/imagePresentation.mjs'
 
 const SCHEMA_VERSION = 1
 const ITEM_ALIAS_STORAGE_KEY = 'item.alias.map'
@@ -12,6 +13,7 @@ const META_JSON_MIGRATION_SOURCE = 'json_migration_source'
 const META_JSON_MIGRATION_FINGERPRINT = 'json_migration_fingerprint'
 const META_JSON_MIGRATION_HISTORY = 'json_migration_history'
 const TAB_CACHE_LIMIT = 30
+const DISPLAY_TYPE_SQL = "(CASE WHEN type = 'file' AND ez_is_image_file_group(data) = 1 THEN 'image' ELSE type END)"
 
 // 与 Main.vue filterItemsByRange 的 JS 回退链一一对应：
 //   普通页  item.updateTime  || item.collectTime || item.createTime || 0
@@ -221,7 +223,13 @@ export class SQLiteClipboardRepository {
     return true
   }
 
+  registerDisplayFunctions() {
+    // Runtime-only classification: no stored type rewrite or schema migration.
+    this.db.create_function('ez_is_image_file_group', (data) => getImageFileGroup({ type: 'file', data }).length ? 1 : 0)
+  }
+
   ensureSchema() {
+    this.registerDisplayFunctions()
     this.db.run(`
       PRAGMA user_version = ${SCHEMA_VERSION};
       CREATE TABLE IF NOT EXISTS items (
@@ -393,6 +401,8 @@ export class SQLiteClipboardRepository {
 
   persistNow() {
     const bytes = this.db.export()
+    // sql.js export reopens its database and discards registered JS functions.
+    this.registerDisplayFunctions()
     const BufferCtor = this.deps?.Buffer || globalThis.Buffer
     const payload = BufferCtor?.from ? BufferCtor.from(bytes) : bytes
     this.deps.writeFileSync(this.dbPath, payload)
@@ -637,7 +647,7 @@ export class SQLiteClipboardRepository {
     if (tab === 'collect') where.push('collected = 1')
     else where.push('collected = 0')
     if (tab && !['all', 'collect'].includes(tab)) {
-      where.push('type = $type')
+      where.push(`${DISPLAY_TYPE_SQL} = $type`)
       params.$type = tab
     }
     if (lockFilter === 'locked') where.push('locked = 1')
@@ -815,7 +825,7 @@ export class SQLiteClipboardRepository {
     const where = ['collected = 0']
     const params = {}
     if (tab && !['all', 'collect'].includes(tab)) {
-      where.push('type = $type')
+      where.push(`${DISPLAY_TYPE_SQL} = $type`)
       params.$type = tab
     }
     if (since != null) {

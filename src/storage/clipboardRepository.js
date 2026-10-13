@@ -1,4 +1,5 @@
 import { buildSearchIndex, normalizeAliasMapEntry, queryClipboardItems } from './searchIndex.js'
+import { getClipboardDisplayType } from '../utils/imagePresentation.mjs'
 
 const ITEM_ALIAS_STORAGE_KEY = 'item.alias.map'
 
@@ -207,7 +208,7 @@ export class ClipboardRepository {
     const effectiveTime = (item) => item.updateTime || item.collectTime || item.createTime || 0
     let rows = asArray(this.dataBase?.data).filter((item) => !this.isCollected(item.id))
     if (tab && !['all', 'collect'].includes(tab)) {
-      rows = rows.filter((item) => item.type === tab)
+      rows = rows.filter((item) => getClipboardDisplayType(item) === tab)
     }
     if (since != null) {
       rows = rows.filter((item) => effectiveTime(item) >= since)

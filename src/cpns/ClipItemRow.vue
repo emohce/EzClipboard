@@ -7,7 +7,7 @@
             'multi-active': isMultiple && isActive,
             select: isSelected,
             'clip-item--compact': isCompact,
-            'clip-item--has-image': item.type === 'image',
+            'clip-item--has-image': displayType === 'image',
             'clip-item--pin-group': item.__pinGroup,
         }"
         :aria-selected="isActive"
@@ -104,24 +104,27 @@
                         <template v-else>{{ textPreviewContent }}</template>
                     </div>
                 </template>
-                <template v-else-if="item.type === 'image'">
+                <template v-else-if="displayType === 'image'">
                     <div class="image-container" @click="handleImageClick">
                         <div v-if="hasAlias" class="clip-image-alias-left">
                             <div class="clip-alias-primary">{{ itemAlias }}</div>
                             <div class="clip-alias-secondary">{{ imageInfoLine }}</div>
                         </div>
+                        <div class="clip-image-preview-wrap">
                         <img
-                            v-if="imageSrc"
+                            v-if="imageSrc && !imageLoadFailed"
                             class="clip-data-image"
                             :src="imageSrc"
-                            alt="Clipboard Image"
+                            :alt="coverIsGif ? 'GIF 首帧' : '图片预览'"
                             loading="lazy"
                             @error="handleImageError"
-                            @load="handleImageLoad"
                         />
                         <div v-else class="image-error-placeholder">
-                            <span>🖼️ 无效图片</span>
+                            <span>{{ thumbnailLoading ? '首帧加载中…' : '图片无法预览' }}</span>
                         </div>
+                        <span v-if="isGif" class="clip-gif-badge">GIF</span>
+                        </div>
+                        <span v-if="imageFileGroup.length > 1" class="clip-image-count">{{ imageFileGroup.length }} 张</span>
                     </div>
                 </template>
                 <template v-else-if="item.type === 'file'">
@@ -227,10 +230,12 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import FileList from "./FileList.vue";
 import ClipOperate from "./ClipOperate.vue";
 import { dateFormat } from "../utils";
+import { isGifItem, loadGifListThumbnail } from "../utils/gifPreview.mjs";
+import { getClipboardDisplayType, getImageFileGroup } from "../utils/imagePresentation.mjs";
 
 const props = defineProps({
     item: { type: Object, required: true },
@@ -322,7 +327,28 @@ const imageFiles = computed(() =>
         ? props.getImageFiles(props.item)
         : [],
 );
-const imageSrc = computed(() => props.getItemImageSrc(props.item));
+const displayType = computed(() => getClipboardDisplayType(props.item));
+const imageFileGroup = computed(() => getImageFileGroup(props.item));
+const isGif = computed(() => isGifItem(props.item));
+const coverIsGif = computed(() => imageFileGroup.value.length
+    ? /\.gif$/i.test(imageFileGroup.value[0].path) : isGif.value);
+const gifThumbnail = ref("");
+const thumbnailLoading = ref(false);
+watch([() => props.item.data, () => props.item.thumbnail, () => props.item.type], async (_, __, onCleanup) => {
+    let cancelled = false;
+    onCleanup(() => { cancelled = true; });
+    gifThumbnail.value = "";
+    thumbnailLoading.value = coverIsGif.value;
+    if (!coverIsGif.value) return;
+    const thumbnail = await loadGifListThumbnail(props.item, window.exports || {});
+    if (cancelled) return;
+    gifThumbnail.value = thumbnail;
+    thumbnailLoading.value = false;
+}, { immediate: true });
+const imageSrc = computed(() => coverIsGif.value
+    ? gifThumbnail.value : props.getItemImageSrc(props.item));
+const imageLoadFailed = ref(false);
+watch(imageSrc, () => { imageLoadFailed.value = false; });
 const enableRichFilePreview = computed(
     () => props.item.type === "file" && props.isActive,
 );
@@ -332,9 +358,11 @@ const handleImageClick = (event) => {
     emit("row-image-click", event);
 };
 
-const handleImageError = (event) => {
-    event.target.style.display = "none";
-};
-
-const handleImageLoad = () => {};
+const handleImageError = () => { imageLoadFailed.value = true; };
 </script>
+
+<style scoped>
+.clip-image-preview-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 60px; min-height: 44px; }
+.clip-gif-badge { position: absolute; right: 2px; bottom: 2px; padding: 1px 4px; border-radius: 3px; background: rgba(0, 0, 0, 0.68); color: #fff; font-size: 10px; font-weight: 600; line-height: 14px; pointer-events: none; }
+.clip-image-count { margin-left: 8px; font-size: 12px; opacity: 0.65; white-space: nowrap; }
+</style>

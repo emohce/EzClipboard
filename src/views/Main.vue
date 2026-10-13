@@ -248,6 +248,7 @@
 </template>
 
 <script setup>
+import { getClipboardDisplayType } from "../utils/imagePresentation.mjs";
 import { ref, shallowRef, watch, onMounted, onUnmounted, computed, nextTick } from "vue";
 import {
     ElMessage,
@@ -568,8 +569,8 @@ const matchLockFilterValue = (item, value = "all") => {
 
 const matchSearchableItemType = (item, keyword, tabType = activeTab.value) => {
     if (tabType === "text") return item.type === "text";
-    if (tabType === "image") return item.type === "image";
-    if (tabType === "file") return item.type === "file";
+    if (tabType === "image") return getClipboardDisplayType(item) === "image";
+    if (tabType === "file") return getClipboardDisplayType(item) === "file";
     if (tabType === "collect") return true;
     // 全部：有关键词时图片仅在与别名/标签匹配时参与（正文为 base64 不做检索）
     if (keyword && item.type === "image") {
@@ -977,7 +978,7 @@ const getItemsByTab = (tabType) => {
     }
     const data = window.db.dataBase.data || [];
     if (tabType === "all") return [...data];
-    return data.filter((item) => item.type === tabType);
+    return data.filter((item) => getClipboardDisplayType(item) === tabType);
 };
 
 const filterItemsByRange = (items, rangeValue, options = {}) => {

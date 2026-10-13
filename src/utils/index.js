@@ -1,3 +1,4 @@
+import { isGifDataUrl } from './gifPreview.mjs'
 const { utools, existsSync, writeFileSync, mkdirSync, sep, Buffer } = window.exports
 const readFileSync = window.exports.readFileSync
 
@@ -265,7 +266,14 @@ const copy = (item, isHideMainWindow = true) => {
       break
     case 'image': {
       const dataUrl = getImageDataUrlForCopy(item)
-      if (dataUrl) utools.copyImage(dataUrl)
+      if (dataUrl) {
+        if (isGifDataUrl(dataUrl)) {
+          const filePath = createFile({ ...item, data: dataUrl })
+          if (filePath) utools.copyFile([filePath])
+        } else {
+          utools.copyImage(dataUrl)
+        }
+      }
       break
     }
     case 'file':
@@ -295,9 +303,14 @@ const tryHideMainWindowPasteItem = (item, options = {}) => {
     return Boolean(utools.hideMainWindowPasteText(item.data))
   }
   if (item.type === 'image') {
-    if (typeof utools.hideMainWindowPasteImage !== 'function') return null
     const dataUrl = getImageDataUrlForCopy(item)
     if (!dataUrl) return respectImageCopyGuard ? false : null
+    if (isGifDataUrl(dataUrl)) {
+      if (typeof utools.hideMainWindowPasteFile !== 'function') return null
+      const filePath = createFile({ ...item, data: dataUrl })
+      return filePath ? Boolean(utools.hideMainWindowPasteFile(filePath)) : false
+    }
+    if (typeof utools.hideMainWindowPasteImage !== 'function') return null
     return Boolean(utools.hideMainWindowPasteImage(dataUrl))
   }
   if (item.type === 'file') {
@@ -484,7 +497,14 @@ const copyOnly = (item) => {
       break
     case 'image': {
       const dataUrl = getImageDataUrlForCopy(item)
-      if (dataUrl) utools.copyImage(dataUrl)
+      if (dataUrl) {
+        if (isGifDataUrl(dataUrl)) {
+          const filePath = createFile({ ...item, data: dataUrl })
+          if (filePath) utools.copyFile([filePath])
+        } else {
+          utools.copyImage(dataUrl)
+        }
+      }
       break
     }
     case 'file':

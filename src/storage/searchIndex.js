@@ -1,3 +1,5 @@
+import { getClipboardDisplayType } from '../utils/imagePresentation.mjs'
+
 const safeString = (value) => (value == null ? '' : String(value))
 
 const parseFileList = (raw) => {
@@ -88,7 +90,7 @@ const matchesKeyword = (item, keywordParts, aliasMap, searchIndexMap) => {
 
 const matchesTab = (item, tab) => {
   if (!tab || tab === 'all' || tab === 'collect') return true
-  return item?.type === tab
+  return getClipboardDisplayType(item) === tab
 }
 
 const matchesLockFilter = (item, lockFilter) => {

@@ -226,6 +226,7 @@
 </template>
 
 <script setup>
+import { getClipboardDisplayType, getImageFileGroup, imageFileUrl } from "../utils/imagePresentation.mjs";
 import { ref, onMounted, onUnmounted, watch, computed, nextTick } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import ClipItemRow from "./ClipItemRow.vue";
@@ -730,6 +731,8 @@ const resolvePreviewImageSrc = (value) => {
 };
 
 const getItemImageSrc = (item) => {
+    const imagePath = getImageFileGroup(item)[0]?.path;
+    if (imagePath) return imageFileUrl(imagePath);
     if (!item || item.type !== "image") return "";
     // 悬浮预览优先使用原图以提升清晰度
     return resolvePreviewImageSrc(item.data) || item.thumbnail;
@@ -953,7 +956,7 @@ const runPreviewForItem = (item) => {
         clearFilePreviewImmediately();
         return;
     }
-    if (item.type === "image" && getItemImageSrc(item)) {
+    if (getClipboardDisplayType(item) === "image" && getItemImageSrc(item)) {
         clearTextPreviewImmediately();
         clearFilePreviewImmediately();
         showImagePreview(null, item);
@@ -1290,7 +1293,7 @@ const SCROLL_END_LOAD_MORE_COOLDOWN_MS = 120;
 const estimateItemSize = (index = activeIndex.value) => {
     const item = props.showList[index];
     if (!item) return 52;
-    if (item.type === "image") return 76;
+    if (getClipboardDisplayType(item) === "image") return 76;
     return props.isMultiple && activeIndex.value === index ? 72 : 52;
 };
 const getListVisibleInsets = () => ({
