@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import vm from 'node:vm'
+import { captureClipboardFiles } from './src/utils/capturedFiles.mjs'
 import { GIF_MAX_BYTES, getGifFirstFrameSrc, gifFirstFrameEnd, isGifDataUrl, readClipboardGif, readGifFile } from './src/utils/gifPreview.mjs'
 
 // Two 2x2 frames: red then blue; includes loop/comment/GCE extensions and a local palette.
@@ -51,7 +52,7 @@ assert.equal(readClipboardGif({ availableFormats: () => ['image/png'] }), '')
 const source = fs.readFileSync('src/global/initPlugin.js', 'utf8')
 const captureSource = source.slice(source.indexOf('  const pbpaste = () => {'), source.indexOf('  // 根据当前设备id'))
 const context = {
-  console: { log() {}, warn() {} }, readGifFile, getGifFirstFrameSrc, readClipboardGif,
+  console: { log() {}, warn() {} }, readGifFile, getGifFirstFrameSrc, readClipboardGif, captureClipboardFiles,
   window: { exports: { ...deps, sep: '/' } }, clipboard,
   utools: { getCopyedFiles: () => files, getPath: () => '/tmp' },
   readClipboardSourcePaths: () => []
@@ -75,6 +76,12 @@ context.clipboard = {
 }
 assert.equal(capture().data, 'data:image/png;base64,png')
 assert.equal(imageReads, 1)
+
+// macOS WeWork can expose TIFF pixels without a usable file list.
+context.clipboard.availableFormats = () => ['public.tiff', 'NeXT TIFF v4.0 pasteboard type', 'WWKPrivatePBDataReportKey']
+assert.equal(capture()?.type, 'image', 'TIFF-only clipboard must not be silently dropped')
+context.utools.getCopyedFiles = () => { throw Object.assign(new Error('file-list unavailable'), { code: 'EACCES' }) }
+assert.equal(capture()?.type, 'image', 'a failed file-list read must fall back to clipboard pixels')
 
 // Capture must leave the source GIF clipboard untouched (no static restore loop).
 const restoreSource = source.slice(source.indexOf('  const restoreClipboard = (item) => {'), source.indexOf('  const handleClipboardChange ='))

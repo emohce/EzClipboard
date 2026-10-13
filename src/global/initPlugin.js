@@ -15,6 +15,7 @@ import setting, { SETTING_UPDATED_EVENT } from './readSetting'
 import { initWindowManager, setPluginWindowSize } from './windowManager'
 import { generateThumbnail, shouldGenerateThumbnail } from './imageUtils'
 import { getGifFirstFrameSrc, isGifDataUrl, readClipboardGif, readGifFile } from '../utils/gifPreview.mjs'
+import { captureClipboardFiles } from '../utils/capturedFiles.mjs'
 import { createClipboardRepository } from '../storage/clipboardRepository'
 import { JSON_DB_SCHEMA_VERSION, shouldMigrateJsonDb } from '../storage/jsonMigration'
 import { createSQLiteClipboardRepository } from '../storage/sqliteClipboardRepository'
@@ -1118,7 +1119,13 @@ export default async function initPlugin() {
   const pbpaste = () => {
     console.log('[pbpaste] 开始读取剪贴板内容')
     // file
-    const files = utools.getCopyedFiles() // null | Array
+    let files = null
+    try {
+      files = utools.getCopyedFiles() // null | Array
+    } catch (error) {
+      // File URLs can be unavailable while native clipboard pixels are still readable.
+      console.warn('[pbpaste] 文件列表读取失败，继续读取文本/图片', error?.code || 'unavailable')
+    }
     console.log('[pbpaste] 检查文件:', files ? `找到 ${files.length} 个文件` : '无文件')
     if (files && files.length > 0) {
       const sep = window.exports.sep
@@ -1128,10 +1135,11 @@ export default async function initPlugin() {
       if (!allFromPluginTemp) {
         const originPaths = files.map((f) => f.path).filter(Boolean)
         const hasSourceInfo = originPaths.length > 0
-        const gif = readGifFile(files, window.exports)
+        const capturedFiles = captureClipboardFiles(files, window.exports)
+        const gif = readGifFile(capturedFiles, window.exports)
         const result = {
           type: gif ? 'image' : 'file',
-          data: gif || JSON.stringify(files),
+          data: gif || JSON.stringify(capturedFiles),
           ...(gif ? { thumbnail: getGifFirstFrameSrc(gif) } : {}),
           originPaths,
           sourcePaths: originPaths,
@@ -1171,7 +1179,7 @@ export default async function initPlugin() {
     }
     // image
     const formats = typeof clipboard.availableFormats === 'function' ? clipboard.availableFormats() : []
-    const hasImageFormat = formats.some((format) => /^image\//i.test(format) || /png|jpeg|bitmap/i.test(format))
+    const hasImageFormat = formats.some((format) => /^image\//i.test(format) || /png|jpeg|bitmap|tiff/i.test(format))
     if (!hasImageFormat) {
       return undefined
     }
