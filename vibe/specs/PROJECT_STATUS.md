@@ -1,5 +1,6 @@
 # Project Status Hub
 
+- 2026-10-12 重复计算修复：源码与构建已完成，真实 CPU/响应待用户重新安装后验收；[任务与产物](261012/duplicate-computation/task-card.md)。
 - 2026-10-13 采集审查补修：保护期补采与长驻流式监听已实现，聚焦回归及构建核验通过，真实 uTools 重接入与 CPU 验收待办；[范围与验证](261013/1505-clipboard-listener-fix/task-card.md)。
 
 Tool: codex
@@ -17,11 +18,17 @@ Detailed requirements, plans, evidence, and implementation notes stay in task di
 
 ## Current Main Line
 
-Time window: 2026-09-09.
+Time window: 2026-10-13.
 
-Current focus: 列表上移滚动锚定与滚动容器高度链修复 — **2026-09-09 已补齐 `html→.clip-item-scroll` 高度链（滚动不再回落 document）、上移改为“完全可见不滚 + 最小位移 + 上方留一行”，并顺带修复滚轮触底 `loadMore` 与翻页步长失真；`pnpm run build` 与浏览器实测通过，uTools 默认窗实机复测待办** ([260909/2054-list-up-nav-scroll-anchor/spec.md](260909/2054-list-up-nav-scroll-anchor/spec.md), [260909/2054-list-up-nav-scroll-anchor/verify.md](260909/2054-list-up-nav-scroll-anchor/verify.md)).
+Current focus: 原生监听与早期功能交付核验 — 保护期补采、流式监听、GIF/图片分类、企业微信采集及交互回归已完成；生产构建通过，真实 uTools 重接入、连续复制、预览/粘贴与 CPU 验收待办。
 
-Current core task: 列表上移滚动锚定与滚动容器高度链修复。Authoritative docs: [260909/2054-list-up-nav-scroll-anchor/spec.md](260909/2054-list-up-nav-scroll-anchor/spec.md), [260909/2054-list-up-nav-scroll-anchor/verify.md](260909/2054-list-up-nav-scroll-anchor/verify.md), [../vibe-doc/ai-error-memory/2026-04-06-scroll-path.md](../vibe-doc/ai-error-memory/2026-04-06-scroll-path.md), [../vibe-doc/ai-error-memory/2026-04-16-utools-default-window-list-visibility.md](../vibe-doc/ai-error-memory/2026-04-16-utools-default-window-list-visibility.md).
+Current core task: 剪贴板修复与早期改动交付闭环。Authoritative docs: [原生采集与监听](261013/1505-clipboard-listener-fix/task-card.md), [图片/GIF](260915/gif-preview.md), [企业微信采集](261010-wework-file-capture.md), [导航/快捷键/置顶](261013/1527-earlier-interaction/task-card.md)。
+
+GIF preview follow-up (2026-09-15): 所有纯图片文件记录按图片分类展示，底层文件数据保留；已有记录与多图组直接显示首图/数量，GIF 带标识及首帧，文件列排除图片；分类分页/搜索/清空回归、浏览器组件验证及构建通过，uTools 实机验收待办 — [需求与验证](260915/gif-preview.md:1)。
+
+WeWork 图片历史修复 (2026-10-10)：实机仍未验收；已补 PNG 剪贴板像素备用通路，并反证修复 TIFF-only 被采集入口漏记的问题。聚焦回归和构建通过，本轮新包待安装验证 — [诊断、实现与验证](261010-wework-file-capture.md:1)。
+
+2026-10-13 早期交互改动：搜索翻页、长按逐条后按页、冲突保留项与置顶游标已核验，实机验收待办 — [提交范围与验证](261013/1527-earlier-interaction/task-card.md)。
 
 Completed milestones:
 
