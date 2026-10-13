@@ -1373,6 +1373,9 @@ const autoScrollSpeed = ref(100); // 初始滚动间隔(ms)
 const autoScrollDirection = ref(null); // 'up' or 'down'
 const autoScrollAcceleration = ref(1.2); // 加速因子
 const AUTO_SCROLL_INITIAL_DELAY = 260;
+// 长按前 N 个 tick 逐条移动，之后才切换到整页步长；缺少这一段会让长按一触发就整页跳。
+const AUTO_SCROLL_STEP_TICKS = 6;
+const autoScrollTick = ref(0);
 const drawerShow = ref(false);
 const drawerPosition = ref({ top: 0, left: 0 });
 const drawerItems = ref([]);
@@ -2092,14 +2095,16 @@ function registerListHotkeyFeatures() {
         }
         return setKeyboardActiveIndex(nextIdx, { ...STEP_NAV_CENTER_OPTIONS });
     };
+    // 单页上下滚动在普通/搜索/多选三种状态都要可用，两个方向守卫必须一致：
+    // 只挡别名弹窗与空列表；不再用 isFocusInSearch 单独拦下移（那会让搜索态只能上翻不能下翻）。
     const handleListPageUpCommand = () => {
+        if (isAliasDialogOpen()) return false;
+        if (props.showList.length === 0) return false;
         return runPageNavigation("up");
     };
     const handleListPageDownCommand = () => {
         if (isAliasDialogOpen()) return false;
-        if (isFocusInSearch()) return false;
         if (props.showList.length === 0) return false;
-
         return runPageNavigation("down");
     };
     const handleListNavLeftCommand = () => {
@@ -2580,18 +2585,35 @@ const startAutoScroll = (direction) => {
 
     autoScrollDirection.value = direction;
     autoScrollSpeed.value = 100; // 重置速度
+    autoScrollTick.value = 0; // 重置逐条阶段计数
 
     const scroll = () => {
+        autoScrollTick.value += 1;
+        const useStepPhase = autoScrollTick.value <= AUTO_SCROLL_STEP_TICKS;
         if (direction === "up") {
             if (activeIndex.value > 0) {
-                runPageNavigation("up", { center: true, forceScroll: false });
+                if (useStepPhase) {
+                    submitNavigationAction("hold-scroll", activeIndex.value - 1, {
+                        source: "hold-scroll",
+                        ...STEP_NAV_UP_REVEAL_OPTIONS,
+                    });
+                } else {
+                    runPageNavigation("up", { center: true, forceScroll: false });
+                }
             } else {
                 stopAutoScroll();
                 return;
             }
         } else if (direction === "down") {
             if (activeIndex.value < props.showList.length - 1) {
-                runPageNavigation("down", { center: true, forceScroll: false });
+                if (useStepPhase) {
+                    submitNavigationAction("hold-scroll", activeIndex.value + 1, {
+                        source: "hold-scroll",
+                        ...STEP_NAV_CENTER_OPTIONS,
+                    });
+                } else {
+                    runPageNavigation("down", { center: true, forceScroll: false });
+                }
             } else {
                 const oldLen = props.showList.length;
                 hoverPreviewSuspendedByKeyboard.value = true;
@@ -2636,6 +2658,7 @@ const stopAutoScroll = () => {
     }
     autoScrollDirection.value = null;
     autoScrollSpeed.value = 100;
+    autoScrollTick.value = 0;
 };
 
 const runPageNavigation = (direction, options = {}) => {

@@ -2,6 +2,9 @@ import { canWhenClausesOverlap } from './keybindingConflicts.js'
 import { isShortcutIdFixedNonConfigurable, normalizeShortcutId } from './shortcutKey.js'
 
 /** @type {Array<{ shortcutId: string, commandId: string, when: string, description: string, scope?: string }>} */
+// when 必须与 hotkeyBindings.js 的实际默认绑定同源。主层没有全局输入焦点短路
+// （isEditableHotkeyTarget 只在 setting 层生效），因此主层保留项不写 !inputFocus，
+// 输入态放行由各 handler 自己守卫；设置页保留项才可以写 !inputFocus。
 export const SHORTCUT_RESERVATION_RULES = [
   { shortcutId: 'esc', commandId: 'main.escape', when: 'mainFocus', description: '主界面退出搜索/有锁条件', scope: 'system' },
   { shortcutId: 'esc', commandId: 'dialog.clear.close', when: 'clearDialogOpen', description: '关闭清除对话框', scope: 'system' },
@@ -10,19 +13,19 @@ export const SHORTCUT_RESERVATION_RULES = [
   { shortcutId: 'esc', commandId: 'tag.search.close', when: 'tagSearchOpen', description: '关闭标签搜索', scope: 'system' },
   { shortcutId: 'esc', commandId: 'tag.edit.close', when: 'tagEditOpen', description: '关闭标签编辑', scope: 'system' },
   { shortcutId: 'esc', commandId: 'pin.group.edit.close', when: 'pinGroupEditOpen', description: '关闭置顶组合编辑', scope: 'system' },
-  { shortcutId: 'cr', commandId: 'list.item.copyPaste', when: 'mainFocus && !inputFocus', description: '粘贴选中项', scope: 'system' },
+  { shortcutId: 'cr', commandId: 'list.item.copyPaste', when: 'mainFocus', description: '粘贴选中项（搜索态回车直接粘贴，由 handler 自守卫）', scope: 'system' },
   { shortcutId: 'cr', commandId: 'dialog.clear.confirm', when: 'clearDialogOpen', description: '确认清除对话框', scope: 'system' },
   { shortcutId: 'cr', commandId: 'drawer.select', when: 'drawerOpen', description: '选择抽屉项', scope: 'system' },
   { shortcutId: 'c-c', commandId: 'list.item.copyOnly', when: 'mainFocus', description: '复制选中项', scope: 'system' },
   { shortcutId: 'c-r', commandId: 'main.tab.next', when: 'mainFocus', description: '系统刷新保留（浏览器）', scope: 'system' },
-  { shortcutId: 'tab', commandId: 'main.tab.nextExplicit', when: 'mainFocus && !inputFocus', description: '主界面下一个主 Tab', scope: 'system' },
-  { shortcutId: 's-tab', commandId: 'main.tab.prev', when: 'mainFocus && !inputFocus', description: '主界面上一个主 Tab', scope: 'system' },
-  { shortcutId: 'c-tab', commandId: 'main.collectSubTab.next', when: 'mainFocus && !inputFocus', description: '收藏子 Tab 下一个', scope: 'system' },
-  { shortcutId: 'c-s-tab', commandId: 'main.collectSubTab.prev', when: 'mainFocus && !inputFocus', description: '收藏子 Tab 上一个', scope: 'system' },
+  { shortcutId: 'tab', commandId: 'main.tab.nextExplicit', when: 'mainFocus', description: '主界面下一个主 Tab', scope: 'system' },
+  { shortcutId: 's-tab', commandId: 'main.tab.prev', when: 'mainFocus', description: '主界面上一个主 Tab', scope: 'system' },
+  { shortcutId: 'c-tab', commandId: 'main.collectSubTab.next', when: 'mainFocus', description: '收藏子 Tab 下一个', scope: 'system' },
+  { shortcutId: 'c-s-tab', commandId: 'main.collectSubTab.prev', when: 'mainFocus', description: '收藏子 Tab 上一个', scope: 'system' },
   { shortcutId: 'tab', commandId: 'dialog.clear.focus.next', when: 'clearDialogOpen', description: '清除对话框焦点切换', scope: 'system' },
   { shortcutId: 's-tab', commandId: 'dialog.clear.focus.next', when: 'clearDialogOpen', description: '清除对话框焦点切换', scope: 'system' },
   { shortcutId: 'tab', commandId: 'tag.edit.focus.next', when: 'tagEditOpen', description: '标签编辑焦点切换', scope: 'system' },
-  { shortcutId: 'space', commandId: 'list.multi.toggleCurrent', when: 'mainFocus && !inputFocus', description: '多选当前项', scope: 'system' },
+  { shortcutId: 'space', commandId: 'list.multi.toggleCurrent', when: 'mainFocus', description: '多选当前项（搜索面板展开时由 handler 放行输入）', scope: 'system' },
   { shortcutId: 'space', commandId: 'pin.group.edit.toggleSelect', when: 'pinGroupEditOpen', description: '置顶组合编辑切换选择', scope: 'system' },
   { shortcutId: 'left', commandId: 'setting.tab.prev', when: 'settingFocus && !inputFocus', description: '设置页上一个 Tab', scope: 'setting-ui' },
   { shortcutId: 'right', commandId: 'setting.tab.next', when: 'settingFocus && !inputFocus', description: '设置页下一个 Tab', scope: 'setting-ui' },

@@ -11,6 +11,8 @@ const PASTEABLE_CLIPBOARD_ITEM_TYPES = new Set(['text', 'image', 'file'])
 const isExternalizedPayloadItem = (item) =>
   Boolean(item?.id && item.dataPath && (item.data == null || item.data === ''))
 
+export { isExternalizedPayloadItem }
+
 const resolveItemById = (id, byId, getItemById) => {
   const known = byId.get(id) || null
   if (isExternalizedPayloadItem(known)) {
@@ -133,6 +135,29 @@ export function resolvePinGroupItemsById(itemIds = [], options = {}) {
     .filter((item) => item?.id && !item.__pinGroup)
 }
 
+/** `*标签 正文` 星标过滤语法解析。 */
+export function parseStarFilter(raw) {
+  const value = raw ?? ''
+  if (!value || value[0] !== '*') return { isStar: false, tagKeyword: '', bodyKeyword: '' }
+  const afterStar = value.slice(1)
+  const firstNonSpace = afterStar.search(/\S/)
+  if (firstNonSpace === -1) return { isStar: true, tagKeyword: '', bodyKeyword: '' }
+  const rest = afterStar.slice(firstNonSpace)
+  const spaceIndex = rest.indexOf(' ')
+  return {
+    isStar: true,
+    tagKeyword: spaceIndex === -1 ? rest : rest.slice(0, spaceIndex),
+    bodyKeyword: spaceIndex === -1 ? '' : rest.slice(spaceIndex + 1).trim()
+  }
+}
+
+export function itemMatchesTagKeyword(item, tagKeyword) {
+  if (!tagKeyword) return true
+  const keyword = String(tagKeyword).toLowerCase()
+  const tags = Array.isArray(item?.tags) ? item.tags : []
+  return tags.some((tag) => String(tag).toLowerCase().includes(keyword))
+}
+
 export function matchSearchableItemType(item, keyword = '', tab = 'all', matchBodyKeyword) {
   if (!item) return false
   if (tab === 'text') return item.type === 'text'
@@ -141,4 +166,49 @@ export function matchSearchableItemType(item, keyword = '', tab = 'all', matchBo
   if (tab === 'collect') return true
   if (keyword && item.type === 'image') return matchBodyKeyword(item, keyword)
   return keyword ? item.type !== 'image' : true
+}
+
+/**
+ * 可复用的置顶过滤函数；Main 与 quickPasteRuntime 当前仍保留各自的匹配入口。
+ * 后续接线需验证 UI 与全局粘贴选出的条目一致，本次导出不替换这些入口。
+ * 协作者由调用方注入，避免此模块反向依赖 db 或 Vue 状态。
+ */
+export function itemMatchesQuickPasteContext(item, context = {}, options = {}) {
+  if (!item) return false
+  const isCollected = typeof options.isCollected === 'function'
+    ? Boolean(options.isCollected(item))
+    : false
+  const matchBodyKeyword = typeof options.matchBodyKeyword === 'function'
+    ? options.matchBodyKeyword
+    : () => true
+  const keyword = typeof context.keyword === 'string' ? context.keyword.trim() : ''
+  const parsed = parseStarFilter(context.keyword)
+  const lockOk = context.lockFilter !== 'locked' || item.locked === true
+
+  if (context.tab === 'collect') {
+    if (!isCollected) return false
+    if (
+      context.collectTag &&
+      context.collectTag !== '*全部*' &&
+      !itemMatchesTagKeyword(item, context.collectTag)
+    ) {
+      return false
+    }
+    if (!lockOk) return false
+    if (parsed.isStar) {
+      return itemMatchesTagKeyword(item, parsed.tagKeyword) && matchBodyKeyword(item, parsed.bodyKeyword)
+    }
+    return matchSearchableItemType(item, keyword, 'collect', matchBodyKeyword) &&
+      matchBodyKeyword(item, keyword)
+  }
+
+  if (isCollected) return false
+  if (parsed.isStar) {
+    return matchSearchableItemType(item, context.keyword, context.tab, matchBodyKeyword) &&
+      lockOk &&
+      matchBodyKeyword(item, parsed.bodyKeyword)
+  }
+  return matchSearchableItemType(item, keyword, context.tab, matchBodyKeyword) &&
+    lockOk &&
+    matchBodyKeyword(item, keyword)
 }

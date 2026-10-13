@@ -244,9 +244,31 @@ export const removePinGroupItems = (ids = [], options = {}) => {
     return getPinGroup(returnType);
 };
 
+/**
+ * 只推进 cursor 的轻量写回：不改写 itemIds，也不改写 state.currentType。
+ * 循环粘贴等运行时行为必须走这里；用 savePinGroup 推进 cursor 会把调用方持有的
+ * （可能已过期的）itemIds 覆盖回存储，并顺带改写当前 Type。
+ */
+export const setPinGroupCursor = (type, cursor) => {
+    const state = getPinGroupState();
+    const groupType = normalizePinGroupType(type || state.currentType);
+    const prev = state.groups[groupType] || createEmptyPinGroup(groupType);
+    if (!prev.itemIds.length) return prev;
+    const nextCursor = Math.min(
+        Math.max(0, Number(cursor) || 0),
+        Math.max(0, prev.itemIds.length - 1),
+    );
+    if (nextCursor === prev.cursor) return prev;
+    const group = { ...prev, cursor: nextCursor, updatedAt: Date.now() };
+    state.groups[groupType] = group;
+    state.updatedAt = group.updatedAt;
+    writePinGroupState(state);
+    return group;
+};
+
 export const advancePinGroupCursor = (type) => {
     const group = getPinGroup(type);
     if (!group.itemIds.length) return group;
     const nextCursor = (group.cursor + 1) % group.itemIds.length;
-    return savePinGroup(group.itemIds, { type: group.type, cursor: nextCursor });
+    return setPinGroupCursor(group.type, nextCursor);
 };

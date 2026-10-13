@@ -41,10 +41,22 @@ export const WHEN_PRESETS = [
   { label: '始终', when: '' }
 ]
 
+/**
+ * 同一时刻最多只有一个为真：overlay 层激活时 buildHotkeyContextSnapshot 会把 mainFocus
+ * 置为 false（overlay 层优先级都高于 main），settingFocus 与 overlay 也不共存。
+ * 少写 mainFocus 会让冲突检测把「overlay 键位 × 主界面键位」全部误判为冲突。
+ */
 export const WHEN_MUTEX_GROUPS = [
-  ['mainFocus', 'settingFocus'],
-  ['settingFocus', 'clearDialogOpen', 'drawerOpen', 'fullDataOpen', 'tagSearchOpen', 'tagEditOpen', 'pinGroupEditOpen'],
-  ['clearDialogOpen', 'drawerOpen', 'fullDataOpen', 'tagSearchOpen', 'tagEditOpen', 'pinGroupEditOpen']
+  [
+    'mainFocus',
+    'settingFocus',
+    'clearDialogOpen',
+    'drawerOpen',
+    'fullDataOpen',
+    'tagSearchOpen',
+    'tagEditOpen',
+    'pinGroupEditOpen'
+  ]
 ]
 
 export function getWhenBuilderDisabledKeys(states = {}, operator = '&&') {
