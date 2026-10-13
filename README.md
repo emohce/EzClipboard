@@ -62,8 +62,8 @@
 ## 构建与发布
 1) 开发：`pnpm install`，`pnpm run serve`（dev server 8081，对应 plugin.json development.main）。
 2) 生产：`pnpm run build` 生成 `dist/`（相对 publicPath），包含 plugin.json 与静态资源。
-3) 打包：确保 `dist/plugin.json` 在根，压缩为 zip 并改名 `.upx` 后上传 uTools 后台。
-4) 本地调试：uTools 开发者工具加载 `dist/` 或 `.upx`.
+3) 离线打包：在 uTools 开发者工具的现有项目中选择最新 `dist/plugin.json`，点击「打包」生成 `.upxs`；完整构建 ZIP 仅用于交接，不能靠改扩展名替代离线安装包。见[官方流程](https://www.u-tools.cn/docs/developer/basic/offline-plugin.html)。
+4) 本地验收：从现有项目导出 `.upxs` 后安装；开发目录接入与离线包安装应分别核验，避免新建不同插件身份。
 
 ## 使用速览
 1) 复制任意文本/图片/文件，历史自动入库（空文本忽略）。
