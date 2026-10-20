@@ -226,7 +226,7 @@
 </template>
 
 <script setup>
-import { getClipboardDisplayType, getImageFileGroup, imageFileUrl } from "../utils/imagePresentation.mjs";
+import { getClipboardDisplayType, getImageFileGroup, imageFileUrl, inlineContainerImageSrc, shouldInlineImagePreview } from "../utils/imagePresentation.mjs";
 import { ref, onMounted, onUnmounted, watch, computed, nextTick } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import ClipItemRow from "./ClipItemRow.vue";
@@ -732,7 +732,12 @@ const resolvePreviewImageSrc = (value) => {
 
 const getItemImageSrc = (item) => {
     const imagePath = getImageFileGroup(item)[0]?.path;
-    if (imagePath) return imageFileUrl(imagePath);
+    if (imagePath) {
+        const inline = inlineContainerImageSrc(imagePath, window.exports || {});
+        // Container file:// loads fail inside the plugin page and stick the error placeholder.
+        if (inline || shouldInlineImagePreview(imagePath)) return inline;
+        return imageFileUrl(imagePath);
+    }
     if (!item || item.type !== "image") return "";
     // 悬浮预览优先使用原图以提升清晰度
     return resolvePreviewImageSrc(item.data) || item.thumbnail;

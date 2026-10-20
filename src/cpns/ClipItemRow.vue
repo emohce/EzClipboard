@@ -116,7 +116,6 @@
                             class="clip-data-image"
                             :src="imageSrc"
                             :alt="coverIsGif ? 'GIF 首帧' : '图片预览'"
-                            loading="lazy"
                             @error="handleImageError"
                         />
                         <div v-else class="image-error-placeholder">

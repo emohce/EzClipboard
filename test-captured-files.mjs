@@ -6,7 +6,7 @@ import crypto from 'node:crypto'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 import { captureClipboardFiles, CAPTURE_MAX_BYTES } from './src/utils/capturedFiles.mjs'
-import { imageFileUrl, getClipboardDisplayType } from './src/utils/imagePresentation.mjs'
+import { imageFileUrl, getClipboardDisplayType, inlineContainerImageSrc } from './src/utils/imagePresentation.mjs'
 import { readGifFile } from './src/utils/gifPreview.mjs'
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ezclip-capture-'))
@@ -27,6 +27,7 @@ try {
   assert.equal(captured[0].name, file.name)
   assert.equal(file.path, sourcePath)
   assert.deepEqual(fs.readFileSync(captured[0].path), png)
+  assert.match(inlineContainerImageSrc(sourcePath, runtime), /^data:image\/png;base64,/)
   assert.deepEqual(captureClipboardFiles([file], runtime), captured)
   const normal = { ...file, path: '/ordinary/picture.png' }
   const document = { path: '/ordinary/a.txt', isFile: true }
@@ -44,6 +45,7 @@ try {
   let imageReads = 0
   const clipboardRuntime = { ...runtime,
     statSync: () => { throw denied },
+    readFileSync: (target) => target === sourcePath ? (() => { throw denied })() : fs.readFileSync(target),
     clipboard: {
       availableFormats: () => ['public.file-url', 'public.tiff', 'WWKPrivatePBDataReportKey'],
       readImage: () => { imageReads++; return { isEmpty: () => false, toPNG: () => png } }
@@ -66,6 +68,96 @@ try {
   }
   assert.equal(captureClipboardFiles([file], fullRuntime)[0], file)
   assert.match(notifications.at(-1), /保存图片副本失败（ENOSPC）/)
+
+  // stat can fail while the bytes are still readable. Do not ask the clipboard.
+  let clipboardHits = 0
+  const statFailReadOk = { ...runtime,
+    statSync: () => { throw denied },
+    clipboard: {
+      availableFormats: () => { clipboardHits += 1; return [] },
+      readImage: () => { clipboardHits += 1; return { isEmpty: () => false, toPNG: () => png } }
+    }
+  }
+  const viaRead = captureClipboardFiles([file], statFailReadOk)[0]
+  assert.notEqual(viaRead.path, sourcePath)
+  assert.equal(clipboardHits, 0)
+  assert.deepEqual(fs.readFileSync(viaRead.path), png)
+
+  // Enterprise WeChat advertises a GIF flavor beside the real PNG/TIFF.
+  const gifFlavor = { ...runtime,
+    statSync: () => { throw denied },
+    readFileSync: (target) => target === sourcePath ? (() => { throw denied })() : fs.readFileSync(target),
+    clipboard: {
+      availableFormats: () => ['public.file-url', 'image/gif', 'public.tiff'],
+      readImage: () => ({ isEmpty: () => false, toPNG: () => png })
+    }
+  }
+  const fromGifFlavor = captureClipboardFiles([file], gifFlavor)[0]
+  assert.notEqual(fromGifFlavor.path, sourcePath)
+  assert.deepEqual(fs.readFileSync(fromGifFlavor.path), png)
+
+  const nativeOnly = {
+    statSync: () => { throw denied },
+    readFileSync: () => { throw denied },
+    nativeImage: {
+      createFromPath: () => ({ isEmpty: () => false, toDataURL: () => 'data:image/png;base64,iVBORw0KGgo=' })
+    }
+  }
+  const nativePath = sourcePath.replace(/\.png$/, '.native.png')
+  assert.equal(inlineContainerImageSrc(nativePath, nativeOnly), 'data:image/png;base64,iVBORw0KGgo=')
+  assert.equal(inlineContainerImageSrc('/ordinary/picture.png', nativeOnly), '')
+
+  // WeChat stores the copied image in a container temp file and then deletes it.
+  const wechatDir = path.join(root, 'Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/demo/temp/RWTemp/2026-10')
+  fs.mkdirSync(wechatDir, { recursive: true })
+  const wechatPath = path.join(wechatDir, '6d899c14a219b250aa9360b504f96c96.jpg')
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9])
+  fs.writeFileSync(wechatPath, jpeg)
+  const wechatFile = { name: path.basename(wechatPath), path: wechatPath, isFile: true, isDirectory: false }
+  const wechatCopy = captureClipboardFiles([wechatFile], runtime)[0]
+  assert.notEqual(wechatCopy.path, wechatPath)
+  assert.equal(wechatCopy.name, wechatFile.name)
+  assert.deepEqual(fs.readFileSync(wechatCopy.path), jpeg)
+  assert.match(inlineContainerImageSrc(wechatPath, runtime), /^data:image\/jpeg;base64,/)
+  assert.match(inlineContainerImageSrc(wechatCopy.path, runtime), /^data:image\/jpeg;base64,/)
+  fs.unlinkSync(wechatPath)
+  assert.equal(fs.existsSync(wechatPath), false)
+  assert.deepEqual(fs.readFileSync(wechatCopy.path), jpeg)
+  assert.match(inlineContainerImageSrc(wechatCopy.path, runtime), /^data:image\/jpeg;base64,/)
+
+  const deniedJpeg = Object.assign(new Error('denied'), { code: 'EACCES' })
+  const jpegClipboard = { ...runtime,
+    statSync: () => { throw deniedJpeg },
+    readFileSync: (target) => {
+      if (target === wechatPath) throw deniedJpeg
+      return fs.readFileSync(target)
+    },
+    clipboard: {
+      availableFormats: () => ['public.file-url', 'public.jpeg'],
+      readBuffer: (format) => format === 'public.jpeg' ? jpeg : null,
+      readImage: () => { throw new Error('pixels must not replace an original jpeg buffer') }
+    }
+  }
+  const jpegFallback = captureClipboardFiles([wechatFile], jpegClipboard)[0]
+  assert.notEqual(jpegFallback.path, wechatPath)
+  assert.equal(jpegFallback.name, wechatFile.name)
+  assert.deepEqual(fs.readFileSync(jpegFallback.path), jpeg)
+
+  const tiffClipboard = { ...runtime,
+    statSync: () => { throw deniedJpeg },
+    readFileSync: (target) => {
+      if (target === wechatPath) throw deniedJpeg
+      return fs.readFileSync(target)
+    },
+    clipboard: {
+      availableFormats: () => ['public.file-url', 'public.tiff'],
+      readImage: () => ({ isEmpty: () => false, toPNG: () => png })
+    }
+  }
+  const tiffFallback = captureClipboardFiles([wechatFile], tiffClipboard)[0]
+  assert.equal(tiffFallback.name.endsWith('.png'), true)
+  assert.deepEqual(fs.readFileSync(tiffFallback.path), png)
+  assert.equal(inlineContainerImageSrc('/ordinary/picture.png', runtime), '')
 
   // Exercise the real capture entry rather than reproducing its field mapping.
   const source = fs.readFileSync('src/global/initPlugin.js', 'utf8')

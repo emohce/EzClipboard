@@ -3,9 +3,12 @@ import path from 'node:path'
 import { buildMacClipboardListener } from './build-mac-clipboard-listener.mjs'
 
 const pluginManifest = {
-  pluginName: '超级剪贴板',
-  description: '强大的剪贴板管理工具',
-  author: 'ZiuChen',
+  // uTools 用 name 认插件。缺了它，重新加载会校验失败并继续打开上一份旧包。
+  name: 'zplatjxv',
+  version: '1.3.8',
+  pluginName: 'EzClipboard',
+  description: '剪切板 - 极客全键盘操作',
+  author: 'emohce',
   homepage: 'https://github.com/ZiuChen',
   main: 'index.html',
   preload: 'preload.js',
