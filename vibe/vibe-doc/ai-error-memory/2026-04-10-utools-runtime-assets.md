@@ -40,3 +40,7 @@
 
 ## 10. 后续观察点
 - 若后续重新引入 `public/`，需要同时更新 Vite 配置、脚本和本文，避免双源分叉。
+
+## 11. 重新加载仍是旧包
+- 症状与清单身份见 [../../knowledge/error-memory/2026-10-20-utools-reload-keeps-old-pack.md](../../knowledge/error-memory/2026-10-20-utools-reload-keeps-old-pack.md)。
+- 宿主机制不在本文复述。验收步骤见 [../../rules/workflow.md](../../rules/workflow.md)。

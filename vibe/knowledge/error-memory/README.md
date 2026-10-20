@@ -28,5 +28,7 @@ Tool: codex
 | EM-2026-07-07-externalized-payload | [2026-07-07-externalized-payload-hydration.md](2026-07-07-externalized-payload-hydration.md) | 外置 payload 轻量行误作完整 item |
 | EM-2026-07-11-node18-esm-test-runner | [2026-07-11-node18-esm-test-runner.md](2026-07-11-node18-esm-test-runner.md) | Node 18 无法加载核心测试动态导入的 `.js` ESM 源码 |
 | EM-2026-07-15-pin-group-active-context | [2026-07-15-pin-group-active-context-bucket-drift.md](2026-07-15-pin-group-active-context-bucket-drift.md) | 置顶组合保存分桶与全局触发 Tab 上下文漂移 |
+| EM-2026-10-20-chat-container-image | [2026-10-20-chat-container-image-preview.md](2026-10-20-chat-container-image-preview.md) | 微信/企业微信容器图片显示「图片无法预览」 |
+| EM-2026-10-20-utools-reload | [2026-10-20-utools-reload-keeps-old-pack.md](2026-10-20-utools-reload-keeps-old-pack.md) | 重新加载或换错 asar 后仍在跑旧包；正文在 CodeNote |
 
 权威实现见各主题知识页（例：[../quick-paste-runtime.md](../quick-paste-runtime.md)）。

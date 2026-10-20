@@ -27,6 +27,7 @@ Tool: codex
 - Add concrete high-risk paths here as they are discovered.
 - Storage migration and repository changes are high risk: before editing `src/global/initPlugin.js`, `src/storage/`, or storage-related settings UI, state migration, fallback, data consistency, and verification impact.
 - uTools runtime asset changes are high risk: before editing `scripts/utools-runtime-assets.mjs`, `vite.config.js`, or plugin preload/listener generation, state the dev/build/runtime impact.
+- 插件清单必须保留已安装身份 `name: zplatjxv` 与合法 `version`。缺 `name` 时重新加载不会采用新的 `dist`。实机换包前备份，只替换当前渲染进程打开的 asar，并完全退出 uTools 后再验收。步骤见 [workflow.md](workflow.md)。
 ## Migrated Project-Specific Constraints
 
 - 修改 `public/plugin.json`、`public/preload.js`、`public/listener.js` 前必须说明影响范围和回归风险。

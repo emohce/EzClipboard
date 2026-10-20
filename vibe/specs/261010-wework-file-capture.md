@@ -22,7 +22,7 @@
 | 1 | 脱离企业微信缓存仍可读、原字节与文件语义保留 | [test-captured-files.mjs](../../test-captured-files.mjs#L1) | 通过；删除测试源文件后验证副本、预览 URL、普通复制、copyOnly 与静默粘贴路径 |
 | 2 | 普通文件、混合组、GIF、失败与边界不回退 | 新回归 + [test-gif-preview.mjs](../../test-gif-preview.mjs#L1) + [test-image-classification.mjs](../../test-image-classification.mjs#L1) | 通过；旧 GIF 回归仅补注入新 helper，原断言保留；分类回归含 SQLite 与 JSON facade |
 | 3 | 模块接线和打包 | pnpm run build | 通过；既有 PDF.js eval 警告仍在；构建不是语义类型检查 |
-| 4 | 宿主真实采集后切换剪贴板，旧记录预览/粘贴 | uTools 实机 | 用户重载且重新复制后仍失败；现场记录仍是外部路径，副本目录未生成。已核验运行进程打开的新插件包，其主脚本与 preload 均和本地构建逐字节一致；待宿主控制台定位失败步骤 |
+| 4 | 宿主真实采集后切换剪贴板，旧记录预览/粘贴 | uTools 实机 | 2026-10-20 用户确认容器图片可以预览。此前重载仍失败，是因为运行的不是含副本与进程内预览的包。见 [261020-wechat-image-preview.md](261020-wechat-image-preview.md) |
 
 1. 原始问题记录没有被修改。自动化不等于宿主访问权限、重启与真实粘贴验收。
 2. 不更新长期记忆；本文件保留任务结论。
